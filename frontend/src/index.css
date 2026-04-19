@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-surface text-on-surface font-sans;
+    background-color: theme('colors.surface.DEFAULT');
+  }
+}
+
+@layer components {
+  /* Buttons */
+  .btn-primary {
+    @apply bg-gradient-primary text-on-primary font-semibold text-sm px-7 py-3 rounded-full border-none cursor-pointer transition-all duration-300;
+    box-shadow: 0 4px 20px rgba(124, 135, 243, 0.3);
+  }
+  .btn-primary:hover {
+    @apply transform -translate-y-[2px];
+    box-shadow: 0 6px 28px rgba(124, 135, 243, 0.45);
+  }
+
+  .btn-secondary {
+    @apply bg-surface-container-high text-primary font-semibold px-7 py-3 rounded-full border-none transition-all duration-300;
+  }
+  .btn-secondary:hover {
+    @apply bg-surface-container-highest;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-primary px-7 py-3 rounded-full border-none transition-all duration-300;
+  }
+  .btn-ghost:hover {
+    background: rgba(189, 194, 255, 0.06);
+    box-shadow: 0 0 20px rgba(189, 194, 255, 0.08);
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-surface-container-low rounded-[24px] p-6 transition-all duration-300;
+  }
+  .card:hover {
+    @apply bg-surface-container transform -translate-y-[2px];
+  }
+
+  /* Glassmorphism */
+  .glass-card {
+    background: rgba(189, 194, 255, 0.06);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(189, 194, 255, 0.08);
+    border-radius: 1.5rem;
+  }
+  
+  .glass-card-elevated {
+    background: rgba(189, 194, 255, 0.10);
+    backdrop-filter: blur(30px);
+    border: 1px solid rgba(189, 194, 255, 0.12);
+    box-shadow: 0 8px 40px rgba(11, 19, 38, 0.4);
+  }
+
+  /* Inputs */
+  .input-field {
+    @apply bg-surface-container-lowest text-on-surface border-none border-l-2 border-transparent rounded-xl px-4 py-[14px] text-sm transition-all duration-300 w-full;
+  }
+  .input-field:focus {
+    @apply bg-surface-container-high border-primary outline-none;
+  }
+}
+
+/* Scroll Animations Utils */
+.scroll-animate {
+  opacity: 0;
+  transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.scroll-animate.visible {
+  opacity: 1;
+  transform: none !important;
+}
+
+.from-bottom { transform: translateY(60px); }
+.from-left { transform: translateX(-80px); }
+.from-right { transform: translateX(80px); }
+
+.delay-1 { transition-delay: 0.1s; }
+.delay-2 { transition-delay: 0.2s; }
+.delay-3 { transition-delay: 0.3s; }
