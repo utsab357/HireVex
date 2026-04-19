@@ -1,0 +1,42 @@
+# ── PYTHON / DJANGO ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+env/
+.env
+db.sqlite3
+*.log
+media/
+staticfiles/
+
+# ── NODE / REACT ──
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+.pnp.*
+.yarn/
+frontend/dist/
+frontend/build/
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── MISC ──
+*.bak
+*.tmp
+.cache/
