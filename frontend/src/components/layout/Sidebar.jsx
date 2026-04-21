@@ -6,7 +6,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   const navItems = [
     { icon: Home, label: 'HOME', path: '/dashboard' },
     { icon: Briefcase, label: 'JOBS', path: '/jobs' },
-    { icon: GitMerge, label: 'PIPELINE', path: '/pipeline' },
+    { icon: GitMerge, label: 'TALENT FLOW', path: '/pipeline' },
   ];
 
   return (

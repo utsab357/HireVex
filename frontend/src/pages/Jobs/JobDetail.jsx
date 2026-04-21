@@ -174,9 +174,23 @@ const JobDetail = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-6">
-                      {cand.ai_score ? (
-                        <div className="flex items-center gap-2 cursor-pointer hover:scale-105 transition-transform" onClick={() => window.location.href=`/candidates/${cand.id}`}>
-                           <ScoreRing score={cand.ai_score} size={40} strokeWidth={4} />
+                      {cand.ai_score !== null && cand.ai_score !== undefined ? (
+                        <div className="flex items-center gap-3">
+                           <div className="cursor-pointer hover:scale-105 transition-transform" onClick={() => window.location.href=`/candidates/${cand.id}`}>
+                             <ScoreRing score={cand.ai_score} size={40} strokeWidth={4} />
+                           </div>
+                           <button 
+                             onClick={() => handleAnalyze(cand.id)}
+                             disabled={analyzingIds.has(cand.id)}
+                             className="text-on-surface-variant hover:text-primary transition-colors"
+                             title="Re-analyze"
+                           >
+                             {analyzingIds.has(cand.id) ? (
+                               <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                             ) : (
+                               <Sparkles size={16} />
+                             )}
+                           </button>
                         </div>
                       ) : (
                         <button 
@@ -189,7 +203,7 @@ const JobDetail = () => {
                           ) : (
                             <Sparkles size={14} className="text-primary" />
                           )}
-                          {analyzingIds.has(cand.id) ? 'Analyzing...' : 'Run AI Analysis'}
+                          {analyzingIds.has(cand.id) ? 'Analyzing...' : 'Run ATS Scan'}
                         </button>
                       )}
                       

@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .models import AIEvaluation
 from .serializers import AIEvaluationSerializer
-from .engine import MockAIEngine
+from .engine import ATSEngine
 from candidates.models import Candidate
 
 class AIEvaluationViewSet(viewsets.ModelViewSet):
@@ -19,12 +19,11 @@ class AIEvaluationViewSet(viewsets.ModelViewSet):
     def evaluate(self, request, candidate_id=None):
         candidate = get_object_or_404(Candidate, id=candidate_id, job__user=request.user)
         
-        # Check if already evaluated to prevent double processing
-        if hasattr(candidate, 'ai_evaluation'):
-            return Response({'error': 'Candidate already evaluated.'}, status=status.HTTP_400_BAD_REQUEST)
+        # Delete old evaluation if exists (allows re-scoring with updated engine)
+        AIEvaluation.objects.filter(candidate=candidate).delete()
         
-        # Call Mock Engine
-        result = MockAIEngine.evaluate(candidate)
+        # Call Real ATS Engine
+        result = ATSEngine.evaluate(candidate)
         
         # Save evaluation
         evaluation = AIEvaluation.objects.create(

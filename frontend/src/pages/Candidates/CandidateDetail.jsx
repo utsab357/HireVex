@@ -164,24 +164,8 @@ const CandidateDetail = () => {
                 </ul>
               </div>
 
-              {/* Interview Scripts */}
-              <div className="card glass-card border flex-1 border-primary/20">
-                <h3 className="font-semibold flex items-center gap-2 mb-4">
-                  <HelpCircle size={18} className="text-tertiary" />
-                  Suggested Interview Script
-                </h3>
-                <p className="text-xs text-on-surface-variant mb-6">
-                  AI generated questions targeting the candidate's specific background and potential gaps.
-                </p>
-                <div className="space-y-4">
-                  {ev.interview_questions.map((q, i) => (
-                    <div key={i} className="p-4 rounded-xl bg-surface-container-high border border-[rgba(73,69,79,0.1)]">
-                       <span className="text-xs font-bold text-tertiary mb-2 block">QUESTION {i+1}</span>
-                       <p className="text-sm font-medium text-on-surface">{q}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+
+
 
            </div>
         </div>

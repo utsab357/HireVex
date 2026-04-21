@@ -20,13 +20,28 @@ const Pipeline = () => {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [draggedCandId, setDraggedCandId] = useState(null);
+  const [allJobs, setAllJobs] = useState([]);
 
   useEffect(() => {
     if (jobId) {
       fetchJobDetails();
       fetchCandidates();
+    } else {
+      // No job selected — fetch all jobs so user can pick one
+      fetchAllJobs();
     }
   }, [jobId]);
+
+  const fetchAllJobs = async () => {
+    try {
+      const res = await api.get('jobs/');
+      setAllJobs(res.data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchJobDetails = async () => {
     try {
@@ -109,6 +124,50 @@ const Pipeline = () => {
   };
 
   if (loading) return <div className="p-8 relative z-10">Loading pipeline...</div>;
+  
+  // No job selected — show job picker
+  if (!jobId) {
+    return (
+      <div className="space-y-6 animate-fade-in relative overflow-hidden">
+        <div className="absolute top-[-100px] right-[-100px] w-[800px] h-[800px] bg-gradient-primary rounded-full blur-[150px] opacity-5 pointer-events-none"></div>
+        <header className="relative z-10">
+          <h1 className="text-3xl font-bold tracking-tight text-on-surface">Talent Flow</h1>
+          <p className="text-on-surface-variant mt-1 text-sm">Select a job to manage its hiring pipeline.</p>
+        </header>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
+          {allJobs.length === 0 ? (
+            <div className="col-span-full flex flex-col items-center justify-center py-16 text-on-surface-variant">
+              <GitMerge size={48} className="mb-4 opacity-30" />
+              <p className="text-lg font-semibold mb-2">No Jobs Yet</p>
+              <p className="text-sm mb-6">Create a job first, then come back to manage its pipeline.</p>
+              <Link to="/jobs" className="btn-primary">Go to Jobs</Link>
+            </div>
+          ) : (
+            allJobs.map(j => (
+              <Link 
+                to={`/pipeline?job=${j.id}`} 
+                key={j.id}
+                className="card glass-card hover:border-primary/30 transition-all group cursor-pointer"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                    <Building2 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-on-surface group-hover:text-primary transition-colors">{j.title}</h3>
+                    <p className="text-xs text-on-surface-variant">{j.department} • {j.location}</p>
+                  </div>
+                </div>
+                <div className="text-xs text-primary font-semibold mt-2">Open Talent Flow →</div>
+              </Link>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
+  
   if (!job) return <div className="p-8 relative z-10">Please select a job to view its pipeline.</div>;
 
   return (
@@ -122,7 +181,7 @@ const Pipeline = () => {
           <ArrowLeft size={18} />
         </Link>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight text-on-surface">Pipeline Board</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-on-surface">Talent Flow</h1>
           <div className="flex items-center gap-3 text-on-surface-variant text-sm mt-1">
              <span className="font-semibold text-primary">{job.title}</span>
              <span className="w-1 h-1 rounded-full bg-on-surface-variant/40"></span>
