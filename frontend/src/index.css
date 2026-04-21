@@ -9,6 +9,26 @@
     @apply bg-surface text-on-surface font-sans;
     background-color: theme('colors.surface.DEFAULT');
   }
+
+  /* Custom dark scrollbar for all scrollable areas */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(189, 194, 255, 0.15) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(189, 194, 255, 0.15);
+    border-radius: 999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(189, 194, 255, 0.3);
+  }
 }
 
 @layer components {

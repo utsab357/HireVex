@@ -65,7 +65,7 @@ const CandidateDetail = () => {
   const ev = candidate.evaluation;
 
   return (
-    <div className="space-y-6 animate-fade-in relative h-full flex flex-col">
+    <div className="space-y-6 animate-fade-in relative h-full flex flex-col overflow-hidden">
       {/* Background decoration */}
       <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-gradient-primary rounded-full blur-[120px] opacity-10 pointer-events-none"></div>
 

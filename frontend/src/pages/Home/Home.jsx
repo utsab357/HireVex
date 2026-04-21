@@ -40,7 +40,7 @@ const Home = () => {
   }, []);
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-8 animate-fade-in relative overflow-hidden pb-8">
       <header className="relative z-10">
         <h1 className="text-3xl font-bold tracking-tight text-on-surface">
           Command Center
@@ -58,7 +58,7 @@ const Home = () => {
       ) : (
         <>
           {/* Top Metrics Row */}
-          <div className="grid grid-cols-3 gap-6 relative z-10">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
             <div className="card glass-card hover:border-primary/30 transition-colors">
               <div className="flex items-center justify-between mb-4">
                  <h3 className="text-sm font-semibold text-on-surface-variant uppercase tracking-wider">Active Jobs</h3>
@@ -90,10 +90,10 @@ const Home = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-6 relative z-10">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative z-10">
             {/* Main Column */}
-            <div className="col-span-2 space-y-6">
-               <div className="card bg-surface-container-low border border-[rgba(73,69,79,0.15)] flex flex-col min-h-[400px]">
+            <div className="col-span-1 lg:col-span-2 space-y-6">
+               <div className="card bg-surface-container-low border border-[rgba(73,69,79,0.15)] flex flex-col">
                  <div className="p-4 border-b border-[rgba(73,69,79,0.15)] flex items-center justify-between bg-surface-container">
                    <h2 className="font-semibold text-lg flex items-center gap-2">
                      <Building2 size={18} className="text-primary"/> Recent Jobs
