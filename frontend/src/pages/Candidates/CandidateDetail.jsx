@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Sparkles, AlertTriangle, CheckCircle, HelpCircle, Mail, X } from 'lucide-react';
+import { ArrowLeft, Sparkles, AlertTriangle, CheckCircle, HelpCircle, Mail, X, Phone, FileDown, Briefcase } from 'lucide-react';
 import api from '../../api/client';
 import ScoreRing from '../../components/shared/ScoreRing';
 
@@ -69,45 +69,57 @@ const CandidateDetail = () => {
       {/* Background decoration */}
       <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-gradient-primary rounded-full blur-[120px] opacity-10 pointer-events-none"></div>
 
-      <header className="flex items-start gap-4 relative z-10">
-        <Link to={`/jobs/${candidate.job}`} className="mt-2 w-8 h-8 flex items-center justify-center rounded-full bg-surface-container-high hover:bg-surface-container-highest transition">
-          <ArrowLeft size={18} />
-        </Link>
-        <div className="flex-1 flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-on-surface mb-1">
-              {candidate.first_name} {candidate.last_name}
-            </h1>
-            <div className="flex items-center gap-3 text-on-surface-variant text-sm">
-              <span className="flex items-center gap-1"><Mail size={14} /> {candidate.email}</span>
-              {candidate.phone && (
-                <>
-                  <span className="w-1 h-1 rounded-full bg-on-surface-variant/40"></span>
-                  <span>{candidate.phone}</span>
-                </>
-              )}
+      <header className="relative z-10">
+        <div className="flex items-start gap-4">
+          <Link to={`/jobs/${candidate.job}`} className="mt-2 w-8 h-8 flex items-center justify-center rounded-full bg-surface-container-high hover:bg-surface-container-highest transition">
+            <ArrowLeft size={18} />
+          </Link>
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-gradient-primary text-on-primary flex items-center justify-center text-xl font-bold shadow-lg">
+                  {candidate.first_name[0]}{candidate.last_name[0]}
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold tracking-tight text-on-surface mb-1">
+                    {candidate.first_name} {candidate.last_name}
+                  </h1>
+                  <div className="flex items-center gap-4 text-on-surface-variant text-sm">
+                    <span className="flex items-center gap-1.5"><Mail size={14} /> {candidate.email}</span>
+                    {candidate.phone && (
+                      <span className="flex items-center gap-1.5"><Phone size={14} /> {candidate.phone}</span>
+                    )}
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                      candidate.status === 'shortlisted' ? 'bg-status-success/15 text-status-success' :
+                      candidate.status === 'rejected' ? 'bg-status-error/15 text-status-error' :
+                      candidate.status === 'interview' ? 'bg-primary/15 text-primary' :
+                      'bg-surface-container-highest text-on-surface-variant'
+                    }`}>{candidate.status}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => {
+                    if (candidate.resume?.file) {
+                      const fileUrl = candidate.resume.file.startsWith('http') 
+                        ? candidate.resume.file 
+                        : `http://localhost:8000${candidate.resume.file}`;
+                      window.open(fileUrl, '_blank');
+                    } else {
+                      alert('No resume file available for this candidate.');
+                    }
+                  }}
+                  className="btn-secondary flex items-center gap-2"
+                ><FileDown size={16} /> View Resume</button>
+                <button 
+                  onClick={() => startOutreach('interview')}
+                  className="btn-primary flex items-center gap-2"
+                >
+                  <Mail size={16} /> Draft Outreach
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="flex gap-3 relative">
-             <button 
-                onClick={() => {
-                  if (candidate.resume?.file) {
-                    const fileUrl = candidate.resume.file.startsWith('http') 
-                      ? candidate.resume.file 
-                      : `http://localhost:8000${candidate.resume.file}`;
-                    window.open(fileUrl, '_blank');
-                  } else {
-                    alert('No resume file available for this candidate.');
-                  }
-                }}
-                className="btn-secondary flex items-center gap-2"
-              >View Resume</button>
-             <button 
-                onClick={() => startOutreach('interview')}
-                className="btn-primary flex items-center gap-2"
-             >
-                <Mail size={16} /> Draft Outreach
-             </button>
           </div>
         </div>
       </header>
@@ -149,8 +161,8 @@ const CandidateDetail = () => {
 
              <div className="card glass-card flex-1">
                 <h3 className="font-semibold flex items-center gap-2 mb-4">
-                  <Sparkles size={18} className="text-primary" />
-                  AI Summary
+                  <Briefcase size={18} className="text-primary" />
+                  Summary
                 </h3>
                 <p className="text-sm text-on-surface-variant leading-relaxed">
                   {ev.explanation}

@@ -40,10 +40,8 @@ const Navbar = ({ toggleSidebar }) => {
           <Search size={20} />
         </button>
 
-        {/* Icons */}
-        <button className="text-on-surface-variant hover:text-primary transition-colors hidden sm:block">
-          <Sparkles size={20} />
-        </button>
+
+
 
         {/* Profile Dropdown (simplified) */}
         <div className="flex items-center gap-3 pl-2 md:pl-4 md:border-l border-[rgba(73,69,79,0.15)] cursor-pointer hover:opacity-80 transition-opacity">

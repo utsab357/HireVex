@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Building2, MapPin, ArrowLeft, Upload, FileText, UserPlus, Sparkles, AlertTriangle, ArrowDownAZ, ArrowDown01, Clock, Zap, Pencil } from 'lucide-react';
+import { Building2, MapPin, ArrowLeft, Upload, FileText, UserPlus, Sparkles, AlertTriangle, ArrowDownAZ, ArrowDown01, Clock, Zap, Pencil, Download, BarChart3, GitCompare, X } from 'lucide-react';
 import api from '../../api/client';
 import ScoreRing from '../../components/shared/ScoreRing';
 
@@ -18,6 +18,10 @@ const JobDetail = () => {
   const [insight, setInsight] = useState(null);
   const [editingJob, setEditingJob] = useState(false);
   const [editForm, setEditForm] = useState({});
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [compareIds, setCompareIds] = useState([]);
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareData, setCompareData] = useState([]);
 
   useEffect(() => {
     fetchJobDetails();
@@ -179,6 +183,75 @@ const JobDetail = () => {
       });
     }
   };
+
+  // === EXPORT CSV ===
+  const handleExportCSV = () => {
+    const scored = candidates.filter(c => c.ai_score !== null && c.ai_score !== undefined);
+    if (scored.length === 0) { alert('No scored candidates to export.'); return; }
+    const headers = ['Name', 'Email', 'Phone', 'Score', 'Status', 'Date'];
+    const rows = scored.map(c => [
+      `${c.first_name} ${c.last_name}`,
+      c.email,
+      c.phone || '',
+      c.ai_score,
+      c.status,
+      new Date(c.created_at).toLocaleDateString()
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${job?.title || 'candidates'}_export.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // === ANALYTICS DATA ===
+  const getAnalytics = () => {
+    const scored = candidates.filter(c => c.ai_score !== null && c.ai_score !== undefined);
+    const ranges = [
+      { label: '90-100', min: 90, max: 100, color: '#22c55e' },
+      { label: '70-89', min: 70, max: 89, color: '#a3e635' },
+      { label: '50-69', min: 50, max: 69, color: '#facc15' },
+      { label: '30-49', min: 30, max: 49, color: '#fb923c' },
+      { label: '0-29', min: 0, max: 29, color: '#ef4444' },
+    ];
+    const distribution = ranges.map(r => ({
+      ...r,
+      count: scored.filter(c => c.ai_score >= r.min && c.ai_score <= r.max).length
+    }));
+    const avg = scored.length ? Math.round(scored.reduce((s, c) => s + c.ai_score, 0) / scored.length) : 0;
+    const statuses = {};
+    candidates.forEach(c => { statuses[c.status] = (statuses[c.status] || 0) + 1; });
+    return { distribution, avg, total: scored.length, statuses };
+  };
+
+  // === COMPARE ===
+  const toggleCompare = (id) => {
+    setCompareIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : prev.length < 3 ? [...prev, id] : prev);
+  };
+  const loadCompareData = async () => {
+    const data = [];
+    for (const cid of compareIds) {
+      try {
+        const [candRes, evalRes] = await Promise.all([
+          api.get(`candidates/${cid}/`),
+          api.get('analysis/')
+        ]);
+        const ev = evalRes.data.find(e => e.candidate === parseInt(cid) || e.candidate === cid);
+        data.push({ ...candRes.data, evaluation: ev });
+      } catch (err) { console.error(err); }
+    }
+    setCompareData(data);
+  };
+
+  const handleStatusChange = async (candidateId, newStatus) => {
+    try {
+      await api.patch(`candidates/${candidateId}/`, { status: newStatus });
+      setCandidates(candidates.map(c => c.id === candidateId ? {...c, status: newStatus} : c));
+    } catch (err) { console.error('Status update failed', err); }
+  };
+
+  const analytics = getAnalytics();
 
   if (loading) return <div>Loading...</div>;
   if (!job) return <div>Job not found</div>;
@@ -358,7 +431,16 @@ const JobDetail = () => {
                     {scanAllRunning ? 'Rescanning...' : 'Rescan All'}
                   </button>
                 )}
-                <Link to={`/pipeline?job=${id}`} className="text-xs font-semibold text-primary hover:underline uppercase tracking-wider">Open Kanban</Link>
+                <button onClick={handleExportCSV} className="btn-secondary py-1 px-3 text-xs flex items-center gap-1.5" title="Export CSV">
+                  <Download size={12} /> Export
+                </button>
+                <button onClick={() => setShowAnalytics(!showAnalytics)} className={`btn-secondary py-1 px-3 text-xs flex items-center gap-1.5 ${showAnalytics ? 'bg-primary/20 text-primary' : ''}`}>
+                  <BarChart3 size={12} /> Analytics
+                </button>
+                <button onClick={() => { setCompareMode(!compareMode); if (compareMode) { setCompareIds([]); setCompareData([]); } }} className={`btn-secondary py-1 px-3 text-xs flex items-center gap-1.5 ${compareMode ? 'bg-primary/20 text-primary' : ''}`}>
+                  <GitCompare size={12} /> Compare
+                </button>
+                <Link to={`/pipeline?job=${id}`} className="text-xs font-semibold text-primary hover:underline uppercase tracking-wider">Talent Flow</Link>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -375,6 +457,105 @@ const JobDetail = () => {
               ))}
             </div>
           </div>
+
+          {/* Analytics Panel */}
+          {showAnalytics && (
+            <div className="px-4 py-3 border-b border-[rgba(73,69,79,0.15)] bg-surface-container-low">
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <h4 className="text-[10px] uppercase tracking-wider text-on-surface-variant font-semibold mb-2">Score Distribution</h4>
+                  <div className="space-y-1.5">
+                    {analytics.distribution.map(d => (
+                      <div key={d.label} className="flex items-center gap-2">
+                        <span className="text-[10px] w-12 text-on-surface-variant font-mono">{d.label}</span>
+                        <div className="flex-1 h-4 bg-surface-container rounded overflow-hidden">
+                          <div className="h-full rounded transition-all" style={{ width: `${analytics.total ? (d.count / analytics.total) * 100 : 0}%`, backgroundColor: d.color }}></div>
+                        </div>
+                        <span className="text-[10px] font-bold w-4 text-right">{d.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-col items-center justify-center">
+                  <span className="text-[10px] uppercase tracking-wider text-on-surface-variant font-semibold mb-1">Average Score</span>
+                  <span className="text-4xl font-bold text-primary">{analytics.avg}</span>
+                  <span className="text-xs text-on-surface-variant">{analytics.total} scored</span>
+                </div>
+                <div>
+                  <h4 className="text-[10px] uppercase tracking-wider text-on-surface-variant font-semibold mb-2">Pipeline Status</h4>
+                  <div className="space-y-1">
+                    {Object.entries(analytics.statuses).map(([status, count]) => (
+                      <div key={status} className="flex justify-between text-xs">
+                        <span className="uppercase text-on-surface-variant">{status.replace('_', ' ')}</span>
+                        <span className="font-bold text-on-surface">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Compare Bar */}
+          {compareMode && (
+            <div className="px-4 py-2 border-b border-[rgba(73,69,79,0.15)] bg-primary/5 flex items-center justify-between">
+              <span className="text-xs text-on-surface-variant">Select up to 3 candidates to compare ({compareIds.length}/3)</span>
+              {compareIds.length >= 2 && (
+                <button onClick={loadCompareData} className="btn-primary py-1 px-3 text-xs">Compare Now</button>
+              )}
+            </div>
+          )}
+
+          {/* Compare Results Modal */}
+          {compareData.length >= 2 && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface/80 backdrop-blur-sm animate-fade-in p-4" onClick={() => setCompareData([])}>
+              <div className="bg-surface-container-low border border-[rgba(73,69,79,0.15)] rounded-2xl w-full max-w-5xl shadow-2xl max-h-[85vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold">Candidate Comparison</h2>
+                  <button onClick={() => setCompareData([])} className="text-on-surface-variant hover:text-on-surface"><X size={20} /></button>
+                </div>
+                <div className={`grid gap-4 ${compareData.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                  {compareData.map(c => (
+                    <div key={c.id} className="card bg-surface-container p-4 space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gradient-primary text-on-primary flex items-center justify-center font-bold text-sm">
+                          {c.first_name[0]}{c.last_name[0]}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-sm">{c.first_name} {c.last_name}</h3>
+                          <p className="text-xs text-on-surface-variant">{c.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex justify-center">
+                        <ScoreRing score={c.evaluation?.overall_score || 0} size={80} strokeWidth={6} />
+                      </div>
+                      {c.evaluation?.confidence && (
+                        <div className="text-center">
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                            c.evaluation.confidence === 'high' ? 'bg-status-success/20 text-status-success' :
+                            c.evaluation.confidence === 'medium' ? 'bg-status-warning/20 text-status-warning' :
+                            'bg-status-error/20 text-status-error'
+                          }`}>{c.evaluation.confidence} confidence</span>
+                        </div>
+                      )}
+                      <div>
+                        <h4 className="text-[10px] uppercase font-semibold text-status-success mb-1">Strengths</h4>
+                        <ul className="text-xs text-on-surface-variant space-y-0.5">
+                          {(c.evaluation?.strengths || []).slice(0, 4).map((s, i) => <li key={i}>• {s}</li>)}
+                        </ul>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] uppercase font-semibold text-status-warning mb-1">Gaps</h4>
+                        <ul className="text-xs text-on-surface-variant space-y-0.5">
+                          {(c.evaluation?.weaknesses || []).slice(0, 4).map((w, i) => <li key={i}>• {w}</li>)}
+                        </ul>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           
           <div className="flex-1 overflow-y-auto p-4">
             {candidates.length === 0 ? (
@@ -388,6 +569,9 @@ const JobDetail = () => {
                 {sortedCandidates.map(cand => (
                   <div key={cand.id} className="flex items-center justify-between p-4 bg-surface-container hover:bg-surface-container-high transition rounded-xl border border-[rgba(73,69,79,0.1)] group">
                     <div className="flex items-center gap-4">
+                      {compareMode && (
+                        <input type="checkbox" className="w-4 h-4 accent-primary" checked={compareIds.includes(cand.id)} onChange={() => toggleCompare(cand.id)} />
+                      )}
                       <div className="w-10 h-10 rounded-full bg-gradient-primary text-on-primary flex items-center justify-center font-bold">
                         {cand.first_name[0]}{cand.last_name[0]}
                       </div>
@@ -439,7 +623,23 @@ const JobDetail = () => {
                         </button>
                       )}
                       
-                      <span className="text-[10px] uppercase font-bold px-2 py-1 bg-surface-container-highest rounded tracking-wider w-20 text-center">{cand.status}</span>
+                      <select 
+                        value={cand.status}
+                        onChange={(e) => handleStatusChange(cand.id, e.target.value)}
+                        className={`text-[10px] uppercase font-bold px-2 py-1 rounded tracking-wider w-24 text-center cursor-pointer outline-none ${
+                          cand.status === 'shortlisted' ? 'bg-status-success/15 text-status-success' :
+                          cand.status === 'rejected' ? 'bg-status-error/15 text-status-error' :
+                          cand.status === 'interview' ? 'bg-primary/15 text-primary' :
+                          'bg-surface-container-highest text-on-surface-variant'
+                        }`}
+                      >
+                        <option value="new">New</option>
+                        <option value="review">Review</option>
+                        <option value="shortlisted">Shortlisted</option>
+                        <option value="interview">Interview</option>
+                        <option value="on_hold">On Hold</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
                     </div>
                   </div>
                 ))}

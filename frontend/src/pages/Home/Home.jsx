@@ -114,7 +114,7 @@ const Home = () => {
                              <h4 className="font-semibold text-on-surface group-hover:text-primary transition-colors">{job.title}</h4>
                              <p className="text-xs text-on-surface-variant mt-1">{job.department} • {job.location}</p>
                           </div>
-                          <span className="text-xs bg-surface-container-highest px-3 py-1 rounded font-semibold text-on-surface-variant">View Pipeline</span>
+                          <span className="text-xs bg-surface-container-highest px-3 py-1 rounded font-semibold text-on-surface-variant">View Details</span>
                         </Link>
                       ))
                     )}
