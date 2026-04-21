@@ -1,12 +1,14 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Briefcase, LayoutDashboard, GitMerge, Settings, LifeBuoy, Sparkles, X } from 'lucide-react';
+import { Home, Briefcase, LayoutDashboard, GitMerge, Settings, LifeBuoy, Sparkles, X, BarChart3, GitCompare } from 'lucide-react';
 
 const Sidebar = ({ isOpen, setIsOpen }) => {
   const navItems = [
     { icon: Home, label: 'HOME', path: '/dashboard' },
     { icon: Briefcase, label: 'JOBS', path: '/jobs' },
     { icon: GitMerge, label: 'TALENT FLOW', path: '/pipeline' },
+    { icon: BarChart3, label: 'ANALYTICS', path: '/analytics' },
+    { icon: GitCompare, label: 'COMPARE', path: '/compare' },
   ];
 
   return (

@@ -593,11 +593,30 @@ class ATSEngine:
                     result['flags'].append(f'Invalid date range detected: {start_str} to {end_str}.')
                     continue
 
-                # Check if internship (look for "intern" near this date range)
-                context_start = max(0, text_pos - 100)
+                # Check context around this date range
+                context_start = max(0, text_pos - 200)
                 context_end = min(len(text_lower), text_pos + 200)
                 context = text_lower[context_start:context_end]
-                is_internship = 'intern' in context
+
+                # GUARDRAIL: Skip date ranges that are in an education context
+                education_indicators = [
+                    'b.tech', 'btech', 'm.tech', 'mtech', 'bachelor', 'master',
+                    'b.sc', 'bsc', 'm.sc', 'msc', 'b.e.', 'b.e', 'm.e.',
+                    'mba', 'phd', 'ph.d', 'degree', 'diploma', 'university',
+                    'college', 'campus', 'cgpa', 'gpa', 'institute',
+                    'school', 'academic', 'class of', 'graduated',
+                    'higher secondary', '10th', '12th', 'hsc', 'ssc',
+                    'engineering', 'computer science'
+                ]
+                is_education = any(ind in context for ind in education_indicators)
+                if is_education:
+                    result['flags'].append(
+                        f'Date range {start_str} to {end_str} appears to be education, excluded from work experience.'
+                    )
+                    continue
+
+                # Check if internship (look for "intern" or "trainee" near this date range)
+                is_internship = 'intern' in context or 'trainee' in context
 
                 parsed_ranges.append({
                     'start': start_date,

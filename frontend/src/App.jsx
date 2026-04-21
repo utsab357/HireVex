@@ -12,6 +12,8 @@ import Jobs from './pages/Jobs/Jobs';
 import JobDetail from './pages/Jobs/JobDetail';
 import CandidateDetail from './pages/Candidates/CandidateDetail';
 import Pipeline from './pages/Pipeline/Pipeline';
+import Analytics from './pages/Analytics/Analytics';
+import Compare from './pages/Compare/Compare';
 
 function App() {
   return (
@@ -31,6 +33,8 @@ function App() {
             <Route path="/candidates/:id" element={<CandidateDetail />} />
             <Route path="/candidates" element={<Navigate to="/jobs" replace />} />
             <Route path="/pipeline" element={<Pipeline />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/compare" element={<Compare />} />
           </Route>
         </Routes>
       </BrowserRouter>

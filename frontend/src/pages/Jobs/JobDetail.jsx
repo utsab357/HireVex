@@ -415,9 +415,6 @@ const JobDetail = () => {
                 <UserPlus size={18} className="text-primary" />
                 Talent Pool <span className="bg-surface-container-highest text-on-surface-variant text-xs px-2 py-0.5 rounded-full">{candidates.length}</span>
               </h2>
-              {insight && (
-                <p className="text-[11px] text-on-surface-variant italic">💡 {insight}</p>
-              )}
               <div className="flex items-center gap-2">
                 {candidates.some(c => c.ai_score === null || c.ai_score === undefined) && (
                   <button onClick={handleScanAll} disabled={scanAllRunning} className="btn-secondary py-1 px-3 text-xs flex items-center gap-1.5">
@@ -433,12 +430,6 @@ const JobDetail = () => {
                 )}
                 <button onClick={handleExportCSV} className="btn-secondary py-1 px-3 text-xs flex items-center gap-1.5" title="Export CSV">
                   <Download size={12} /> Export
-                </button>
-                <button onClick={() => setShowAnalytics(!showAnalytics)} className={`btn-secondary py-1 px-3 text-xs flex items-center gap-1.5 ${showAnalytics ? 'bg-primary/20 text-primary' : ''}`}>
-                  <BarChart3 size={12} /> Analytics
-                </button>
-                <button onClick={() => { setCompareMode(!compareMode); if (compareMode) { setCompareIds([]); setCompareData([]); } }} className={`btn-secondary py-1 px-3 text-xs flex items-center gap-1.5 ${compareMode ? 'bg-primary/20 text-primary' : ''}`}>
-                  <GitCompare size={12} /> Compare
                 </button>
                 <Link to={`/pipeline?job=${id}`} className="text-xs font-semibold text-primary hover:underline uppercase tracking-wider">Talent Flow</Link>
               </div>
@@ -458,105 +449,6 @@ const JobDetail = () => {
             </div>
           </div>
 
-          {/* Analytics Panel */}
-          {showAnalytics && (
-            <div className="px-4 py-3 border-b border-[rgba(73,69,79,0.15)] bg-surface-container-low">
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <h4 className="text-[10px] uppercase tracking-wider text-on-surface-variant font-semibold mb-2">Score Distribution</h4>
-                  <div className="space-y-1.5">
-                    {analytics.distribution.map(d => (
-                      <div key={d.label} className="flex items-center gap-2">
-                        <span className="text-[10px] w-12 text-on-surface-variant font-mono">{d.label}</span>
-                        <div className="flex-1 h-4 bg-surface-container rounded overflow-hidden">
-                          <div className="h-full rounded transition-all" style={{ width: `${analytics.total ? (d.count / analytics.total) * 100 : 0}%`, backgroundColor: d.color }}></div>
-                        </div>
-                        <span className="text-[10px] font-bold w-4 text-right">{d.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-col items-center justify-center">
-                  <span className="text-[10px] uppercase tracking-wider text-on-surface-variant font-semibold mb-1">Average Score</span>
-                  <span className="text-4xl font-bold text-primary">{analytics.avg}</span>
-                  <span className="text-xs text-on-surface-variant">{analytics.total} scored</span>
-                </div>
-                <div>
-                  <h4 className="text-[10px] uppercase tracking-wider text-on-surface-variant font-semibold mb-2">Pipeline Status</h4>
-                  <div className="space-y-1">
-                    {Object.entries(analytics.statuses).map(([status, count]) => (
-                      <div key={status} className="flex justify-between text-xs">
-                        <span className="uppercase text-on-surface-variant">{status.replace('_', ' ')}</span>
-                        <span className="font-bold text-on-surface">{count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Compare Bar */}
-          {compareMode && (
-            <div className="px-4 py-2 border-b border-[rgba(73,69,79,0.15)] bg-primary/5 flex items-center justify-between">
-              <span className="text-xs text-on-surface-variant">Select up to 3 candidates to compare ({compareIds.length}/3)</span>
-              {compareIds.length >= 2 && (
-                <button onClick={loadCompareData} className="btn-primary py-1 px-3 text-xs">Compare Now</button>
-              )}
-            </div>
-          )}
-
-          {/* Compare Results Modal */}
-          {compareData.length >= 2 && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface/80 backdrop-blur-sm animate-fade-in p-4" onClick={() => setCompareData([])}>
-              <div className="bg-surface-container-low border border-[rgba(73,69,79,0.15)] rounded-2xl w-full max-w-5xl shadow-2xl max-h-[85vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold">Candidate Comparison</h2>
-                  <button onClick={() => setCompareData([])} className="text-on-surface-variant hover:text-on-surface"><X size={20} /></button>
-                </div>
-                <div className={`grid gap-4 ${compareData.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                  {compareData.map(c => (
-                    <div key={c.id} className="card bg-surface-container p-4 space-y-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-primary text-on-primary flex items-center justify-center font-bold text-sm">
-                          {c.first_name[0]}{c.last_name[0]}
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-sm">{c.first_name} {c.last_name}</h3>
-                          <p className="text-xs text-on-surface-variant">{c.email}</p>
-                        </div>
-                      </div>
-                      <div className="flex justify-center">
-                        <ScoreRing score={c.evaluation?.overall_score || 0} size={80} strokeWidth={6} />
-                      </div>
-                      {c.evaluation?.confidence && (
-                        <div className="text-center">
-                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                            c.evaluation.confidence === 'high' ? 'bg-status-success/20 text-status-success' :
-                            c.evaluation.confidence === 'medium' ? 'bg-status-warning/20 text-status-warning' :
-                            'bg-status-error/20 text-status-error'
-                          }`}>{c.evaluation.confidence} confidence</span>
-                        </div>
-                      )}
-                      <div>
-                        <h4 className="text-[10px] uppercase font-semibold text-status-success mb-1">Strengths</h4>
-                        <ul className="text-xs text-on-surface-variant space-y-0.5">
-                          {(c.evaluation?.strengths || []).slice(0, 4).map((s, i) => <li key={i}>• {s}</li>)}
-                        </ul>
-                      </div>
-                      <div>
-                        <h4 className="text-[10px] uppercase font-semibold text-status-warning mb-1">Gaps</h4>
-                        <ul className="text-xs text-on-surface-variant space-y-0.5">
-                          {(c.evaluation?.weaknesses || []).slice(0, 4).map((w, i) => <li key={i}>• {w}</li>)}
-                        </ul>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          
           <div className="flex-1 overflow-y-auto p-4">
             {candidates.length === 0 ? (
                <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-60">
@@ -569,9 +461,6 @@ const JobDetail = () => {
                 {sortedCandidates.map(cand => (
                   <div key={cand.id} className="flex items-center justify-between p-4 bg-surface-container hover:bg-surface-container-high transition rounded-xl border border-[rgba(73,69,79,0.1)] group">
                     <div className="flex items-center gap-4">
-                      {compareMode && (
-                        <input type="checkbox" className="w-4 h-4 accent-primary" checked={compareIds.includes(cand.id)} onChange={() => toggleCompare(cand.id)} />
-                      )}
                       <div className="w-10 h-10 rounded-full bg-gradient-primary text-on-primary flex items-center justify-center font-bold">
                         {cand.first_name[0]}{cand.last_name[0]}
                       </div>
@@ -676,6 +565,31 @@ const JobDetail = () => {
              <label htmlFor="resume-upload" className="btn-secondary text-sm py-2 px-4 cursor-pointer inline-block">
                Browse Files
              </label>
+          </div>
+
+          {/* Pipeline Insights Card */}
+          <div className="card glass-card border border-primary/20 bg-gradient-to-b from-primary/5 to-transparent flex-shrink-0">
+            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+              <BarChart3 size={16} className="text-primary" /> Pipeline Insights
+            </h3>
+            {insight && (
+              <p className="text-xs text-on-surface-variant mb-3 leading-relaxed">💡 {insight}</p>
+            )}
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="text-center p-2 bg-surface-container rounded-lg">
+                <div className="text-lg font-bold text-primary">{analytics.avg}</div>
+                <div className="text-[9px] uppercase text-on-surface-variant tracking-wider">Avg Score</div>
+              </div>
+              <div className="text-center p-2 bg-surface-container rounded-lg">
+                <div className="text-lg font-bold text-status-success">{analytics.statuses.shortlisted || 0}</div>
+                <div className="text-[9px] uppercase text-on-surface-variant tracking-wider">Shortlisted</div>
+              </div>
+              <div className="text-center p-2 bg-surface-container rounded-lg">
+                <div className="text-lg font-bold text-status-error">{analytics.statuses.rejected || 0}</div>
+                <div className="text-[9px] uppercase text-on-surface-variant tracking-wider">Rejected</div>
+              </div>
+            </div>
+            <Link to="/analytics" className="text-xs text-primary hover:underline font-medium flex items-center gap-1">View full analytics →</Link>
           </div>
 
           {/* Job Details */}
