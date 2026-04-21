@@ -89,7 +89,19 @@ const CandidateDetail = () => {
             </div>
           </div>
           <div className="flex gap-3 relative">
-             <button className="btn-secondary flex items-center gap-2">View Resume</button>
+             <button 
+                onClick={() => {
+                  if (candidate.resume?.file) {
+                    const fileUrl = candidate.resume.file.startsWith('http') 
+                      ? candidate.resume.file 
+                      : `http://localhost:8000${candidate.resume.file}`;
+                    window.open(fileUrl, '_blank');
+                  } else {
+                    alert('No resume file available for this candidate.');
+                  }
+                }}
+                className="btn-secondary flex items-center gap-2"
+              >View Resume</button>
              <button 
                 onClick={() => startOutreach('interview')}
                 className="btn-primary flex items-center gap-2"
@@ -115,8 +127,23 @@ const CandidateDetail = () => {
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-tertiary to-secondary"></div>
                 <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-[0.1em] mb-6">Match Score</h3>
                 <ScoreRing score={ev.overall_score} size={160} strokeWidth={12} />
-                <p className="mt-6 text-sm text-on-surface-variant max-w-[200px]">
-                  Based on semantic matching with job requirements.
+                {ev.confidence && (
+                  <div className={`mt-4 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                    ev.confidence === 'high' ? 'bg-status-success/20 text-status-success' :
+                    ev.confidence === 'medium' ? 'bg-status-warning/20 text-status-warning' :
+                    'bg-status-error/20 text-status-error'
+                  }`}>
+                    {ev.confidence === 'high' ? '🟢' : ev.confidence === 'medium' ? '🟡' : '🔴'} {ev.confidence} confidence
+                  </div>
+                )}
+                {ev.needs_review && (
+                  <div className="mt-3 px-3 py-1.5 rounded-lg bg-status-warning/10 border border-status-warning/30 text-xs text-status-warning flex items-center gap-1.5">
+                    <AlertTriangle size={14} />
+                    <span>{ev.review_reason || 'Needs manual review'}</span>
+                  </div>
+                )}
+                <p className="mt-4 text-sm text-on-surface-variant max-w-[200px]">
+                  Based on rule-based matching with job requirements.
                 </p>
              </div>
 

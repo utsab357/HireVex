@@ -4,8 +4,8 @@ from .models import Candidate, Resume
 class ResumeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Resume
-        fields = ('id', 'file', 'uploaded_at', 'parsed_text')
-        read_only_fields = ('id', 'parsed_text', 'uploaded_at')
+        fields = ('id', 'file', 'uploaded_at')
+        read_only_fields = ('id', 'uploaded_at')
 
 class CandidateSerializer(serializers.ModelSerializer):
     resume = ResumeSerializer(read_only=True)

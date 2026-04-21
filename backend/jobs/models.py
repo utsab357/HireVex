@@ -2,8 +2,6 @@ from django.db import models
 from django.conf import settings
 import uuid
 
-class Job(models.fields.UUIDField):
-    pass # Hack to make UUIDField usage below clean
 
 class Job(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -13,6 +11,20 @@ class Job(models.Model):
     location = models.CharField(max_length=255)
     description = models.TextField()
     status = models.CharField(max_length=50, choices=[('active', 'Active'), ('closed', 'Closed')], default='active')
+    min_experience = models.IntegerField(default=0)
+    max_experience = models.IntegerField(null=True, blank=True)
+    education_level = models.CharField(max_length=50, blank=True, choices=[
+        ('', 'No requirement'),
+        ('any', 'Any degree'),
+        ('bachelors', "Bachelor's degree"),
+        ('masters', "Master's degree"),
+        ('phd', 'PhD'),
+    ], default='')
+    internship_policy = models.CharField(max_length=20, default='half', choices=[
+        ('full', 'Count as full experience'),
+        ('half', 'Count at 50%'),
+        ('ignore', 'Do not count'),
+    ])
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

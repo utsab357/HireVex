@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { X, Plus, Trash2, Sparkles } from 'lucide-react';
 import api from '../../api/client';
 
 const JobCreateModal = ({ onClose, onCreated }) => {
@@ -9,6 +9,10 @@ const JobCreateModal = ({ onClose, onCreated }) => {
     department: '',
     location: '',
     description: '',
+    min_experience: 0,
+    max_experience: '',
+    education_level: '',
+    internship_policy: 'half'
   });
   
   const [requirements, setRequirements] = useState([
@@ -48,6 +52,33 @@ const JobCreateModal = ({ onClose, onCreated }) => {
     setRequirements(requirements.filter((_, i) => i !== index));
   };
 
+  const [detectedSkills, setDetectedSkills] = useState([]);
+
+  const handleDescriptionBlur = useCallback(async () => {
+    const desc = formData.description.trim();
+    if (desc.length < 20) return;
+    try {
+      const response = await api.post('jobs/extract-skills/', { description: desc });
+      const skills = response.data.skills || [];
+      // Filter out skills already in requirements
+      const existingSkills = requirements.map(r => r.skill_name.toLowerCase());
+      const newSkills = skills.filter(s => !existingSkills.includes(s.toLowerCase()));
+      setDetectedSkills(newSkills);
+    } catch (e) {
+      console.error('Skill detection failed:', e);
+    }
+  }, [formData.description, requirements]);
+
+  const addDetectedSkills = () => {
+    const newReqs = detectedSkills.map(skill => ({
+      skill_name: skill,
+      importance: 3,
+      is_must_have: false
+    }));
+    setRequirements([...requirements.filter(r => r.skill_name.trim() !== ''), ...newReqs]);
+    setDetectedSkills([]);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface/80 backdrop-blur-sm animate-fade-in p-4">
       <div className="bg-surface-container-low border border-[rgba(73,69,79,0.15)] rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
@@ -74,15 +105,68 @@ const JobCreateModal = ({ onClose, onCreated }) => {
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Description</label>
-              <textarea required className="input-field min-h-[100px] py-3" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Brief description of the role..."></textarea>
+              <textarea required className="input-field min-h-[100px] py-3" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} onBlur={handleDescriptionBlur} placeholder="Paste the job description here... Skills will be auto-detected."></textarea>
+            </div>
+          </div>
+          
+          <div className="border-t border-[rgba(73,69,79,0.15)] pt-6">
+            <h3 className="font-semibold text-on-surface mb-4">Job Requirements</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Min Experience</label>
+                <select className="input-field" value={formData.min_experience} onChange={e => setFormData({...formData, min_experience: parseInt(e.target.value)})}>
+                  {[...Array(16)].map((_, i) => <option key={i} value={i}>{i} Years</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Max Experience (Optional)</label>
+                <select className="input-field" value={formData.max_experience} onChange={e => setFormData({...formData, max_experience: e.target.value ? parseInt(e.target.value) : ''})}>
+                  <option value="">No Maximum</option>
+                  {[...Array(16)].map((_, i) => <option key={i} value={i}>{i} Years</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Education Level</label>
+                <select className="input-field" value={formData.education_level} onChange={e => setFormData({...formData, education_level: e.target.value})}>
+                  <option value="">No requirement</option>
+                  <option value="any">Any degree</option>
+                  <option value="bachelors">Bachelor's degree</option>
+                  <option value="masters">Master's degree</option>
+                  <option value="phd">PhD</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-2">Internship Policy</label>
+                <select className="input-field" value={formData.internship_policy} onChange={e => setFormData({...formData, internship_policy: e.target.value})}>
+                  <option value="full">Count Full (1x)</option>
+                  <option value="half">Count Half (0.5x)</option>
+                  <option value="ignore">Ignore</option>
+                </select>
+              </div>
             </div>
           </div>
 
           <div className="border-t border-[rgba(73,69,79,0.15)] pt-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-on-surface">Scoring Requirements</h3>
-              <p className="text-xs text-on-surface-variant">These help AI score candidates</p>
+              <p className="text-xs text-on-surface-variant">These help ATS score candidates</p>
             </div>
+
+            {detectedSkills.length > 0 && (
+              <div className="mb-4 p-3 rounded-xl bg-primary/10 border border-primary/20 flex items-start gap-3">
+                <Sparkles size={18} className="text-primary mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-on-surface mb-1">Detected Skills</p>
+                  <p className="text-xs text-on-surface-variant mb-2">
+                    {detectedSkills.join(', ')}
+                  </p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={addDetectedSkills} className="text-xs font-semibold text-primary hover:underline">+ Add All</button>
+                    <button type="button" onClick={() => setDetectedSkills([])} className="text-xs font-semibold text-on-surface-variant hover:underline">Dismiss</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-3">
               {requirements.map((req, idx) => (
@@ -102,10 +186,10 @@ const JobCreateModal = ({ onClose, onCreated }) => {
                       value={req.importance}
                       onChange={(e) => updateRequirement(idx, 'importance', parseInt(e.target.value))}
                     >
-                      <option value={1}>1 - Nice to have</option>
-                      <option value={2}>2</option>
+                      <option value={1}>1 - Nice to Have</option>
+                      <option value={2}>2 - Preferred</option>
                       <option value={3}>3 - Important</option>
-                      <option value={4}>4</option>
+                      <option value={4}>4 - Very Important</option>
                       <option value={5}>5 - Critical</option>
                     </select>
                   </div>

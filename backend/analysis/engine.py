@@ -1,334 +1,1198 @@
+"""
+ATS Engine — Production-Grade Resume Scoring System
+Rule-based scoring with no AI dependencies.
+
+BIAS SAFEGUARDS:
+This engine scores ONLY on:
+- Skills (text matching against job requirements)
+- Experience duration (date math)
+- Resume structure (sections present)
+- Job requirement alignment
+
+This engine NEVER considers:
+- Candidate name, gender, age
+- College/university name or ranking
+- Photos or personal details
+- Gender-coded language
+"""
+
 import re
+from datetime import datetime, date
+
 
 class ATSEngine:
     """
-    A real keyword-matching ATS (Applicant Tracking System) engine.
-    No external AI APIs needed — 100% free.
-    
-    How it works:
-    1. Reads the actual text extracted from the uploaded PDF resume
-    2. Reads the job requirements (skills) and job description
-    3. Checks which skills are found vs missing in the resume
-    4. Calculates a weighted score based on importance & must-have flags
-    5. Generates real strengths (matched skills) and weaknesses (missing skills)
-    6. Creates relevant interview questions based on the gaps
+    Production-grade ATS scoring engine.
+    All scoring is deterministic and rule-based.
     """
 
-    # Common resume section keywords to detect structure
+    # ═══════════════════════════════════════════════════════════
+    # STEP 1: Resume Quality Check
+    # ═══════════════════════════════════════════════════════════
+
+    # Words that indicate the file is NOT a resume
+    NON_RESUME_INDICATORS = [
+        'invoice', 'receipt', 'bill to', 'payment due', 'amount due',
+        'tax invoice', 'purchase order', 'shipping label', 'packing slip',
+        'bank statement', 'account statement', 'transaction history',
+    ]
+
+    # Section header keywords for detection
     SECTION_KEYWORDS = {
-        'experience': ['experience', 'work history', 'employment', 'professional background'],
-        'education': ['education', 'academic', 'degree', 'university', 'college', 'school'],
-        'skills': ['skills', 'technologies', 'tech stack', 'tools', 'proficiencies', 'competencies'],
-        'projects': ['projects', 'portfolio'],
-        'certifications': ['certifications', 'certificates', 'licensed'],
+        'skills': [
+            'skills', 'technical skills', 'technologies', 'tech stack',
+            'tools', 'proficiencies', 'competencies', 'expertise',
+            'programming languages', 'frameworks', 'core competencies',
+        ],
+        'experience': [
+            'experience', 'work experience', 'work history', 'employment',
+            'professional experience', 'professional background',
+            'career history', 'employment history',
+        ],
+        'education': [
+            'education', 'academic', 'academic background',
+            'qualifications', 'educational background',
+        ],
+        'projects': [
+            'projects', 'personal projects', 'portfolio',
+            'academic projects', 'key projects',
+        ],
+        'certifications': [
+            'certifications', 'certificates', 'licensed',
+            'professional certifications', 'accreditations',
+        ],
     }
 
     @staticmethod
-    def evaluate(candidate):
+    def _check_resume_quality(text):
         """
-        Evaluate a candidate's resume against their job requirements.
-        Returns a structured result with score, strengths, weaknesses, and questions.
+        Step 1: Check if the uploaded file is actually a resume.
+        Returns: {
+            'is_valid': bool,
+            'word_count': int,
+            'has_email': bool,
+            'has_phone': bool,
+            'flags': list of strings describing issues,
+            'stop_reason': str or None (if scoring should stop entirely)
+        }
         """
-        job = candidate.job
-        
-        # Get the parsed resume text
-        resume_text = ""
-        try:
-            if hasattr(candidate, 'resume') and candidate.resume:
-                resume_text = (candidate.resume.parsed_text or "").lower().strip()
-        except Exception:
-            resume_text = ""
+        result = {
+            'is_valid': True,
+            'word_count': 0,
+            'has_email': False,
+            'has_phone': False,
+            'flags': [],
+            'stop_reason': None,
+        }
 
-        # If no resume text was extracted, return a low score
-        if not resume_text or resume_text.startswith("[text extraction failed"):
-            return ATSEngine._no_resume_result()
+        text_lower = text.lower().strip()
 
-        # Get job requirements
-        requirements = list(job.requirements.all())
-        job_description = (job.description or "").lower()
+        # Check if text extraction failed
+        if text_lower.startswith('[text extraction'):
+            result['is_valid'] = False
+            result['stop_reason'] = (
+                'Could not extract readable text from the uploaded file. '
+                'The file may be image-based (scanned), corrupted, or not a valid resume.'
+            )
+            return result
 
-        # If no requirements defined, do a basic description keyword match
-        if not requirements:
-            return ATSEngine._description_only_match(resume_text, job_description, job.title)
+        # Word count check
+        words = text.split()
+        result['word_count'] = len(words)
 
-        # ═══════════════════════════════════════════
-        # STEP 1: Skill Matching
-        # ═══════════════════════════════════════════
-        matched_skills = []
-        missing_skills = []
+        if len(words) < 50:
+            result['is_valid'] = False
+            result['stop_reason'] = (
+                f'File contains only {len(words)} words, which is too short to be a resume. '
+                'Please upload a complete resume document.'
+            )
+            return result
+
+        # Non-resume content check (invoice, receipt, etc.)
+        for indicator in ATSEngine.NON_RESUME_INDICATORS:
+            if indicator in text_lower:
+                result['is_valid'] = False
+                result['stop_reason'] = (
+                    f'This file appears to be a "{indicator}" document, not a resume. '
+                    'Please upload a valid resume.'
+                )
+                return result
+
+        # Email detection
+        email_match = re.search(r'[\w.-]+@[\w.-]+\.\w{2,}', text)
+        result['has_email'] = email_match is not None
+        if not result['has_email']:
+            result['flags'].append('No contact email detected in resume.')
+
+        # Phone detection
+        phone_match = re.search(r'[\+]?[\d\s\-\(\)]{10,15}', text)
+        result['has_phone'] = phone_match is not None
+        if not result['has_phone']:
+            result['flags'].append('No phone number detected in resume.')
+
+        # Skill stuffing check (more than 40 distinct tech-like words in a short resume)
+        # Simple heuristic: if resume is short but mentions too many comma-separated items
+        if len(words) < 200:
+            comma_items = text.count(',')
+            if comma_items > 40:
+                result['flags'].append(
+                    'Possible skill stuffing detected — large number of comma-separated items '
+                    'in a short resume.'
+                )
+
+        return result
+
+    # ═══════════════════════════════════════════════════════════
+    # STEP 2: Section Detection
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _detect_sections(text):
+        """
+        Step 2: Detect which standard resume sections are present.
+        Returns: {
+            'skills': {'found': bool, 'start_pos': int or None, 'end_pos': int or None},
+            'experience': {'found': bool, ...},
+            'education': {'found': bool, ...},
+            'projects': {'found': bool, ...},
+            'certifications': {'found': bool, ...},
+            'sections_found_count': int,
+        }
+        """
+        text_lower = text.lower()
+        lines = text_lower.split('\n')
+        sections = {}
+
+        for section_name, keywords in ATSEngine.SECTION_KEYWORDS.items():
+            found = False
+            start_pos = None
+
+            for keyword in keywords:
+                # Look for section headers: keyword at start of a line or as standalone line
+                for i, line in enumerate(lines):
+                    stripped = line.strip()
+                    # Match if line starts with the keyword or IS the keyword
+                    # (section headers are usually short lines)
+                    if (stripped == keyword or
+                        stripped.startswith(keyword + ':') or
+                        stripped.startswith(keyword + ' ') or
+                        (len(stripped) < 50 and keyword in stripped)):
+                        found = True
+                        start_pos = i
+                        break
+                if found:
+                    break
+
+            sections[section_name] = {
+                'found': found,
+                'line_index': start_pos,
+            }
+
+        # Count how many sections were found
+        sections['sections_found_count'] = sum(
+            1 for s in ['skills', 'experience', 'education', 'projects', 'certifications']
+            if sections[s]['found']
+        )
+
+        return sections
+
+    @staticmethod
+    def _get_section_text(text, sections, section_name):
+        """
+        Extract text belonging to a specific section.
+        Returns text from the section header to the next section header (or end of text).
+        """
+        if not sections[section_name]['found']:
+            return ''
+
+        lines = text.split('\n')
+        start = sections[section_name]['line_index']
+
+        # Find where next section starts
+        all_section_lines = []
+        for sname in ['skills', 'experience', 'education', 'projects', 'certifications']:
+            if sname != section_name and sections[sname]['found']:
+                all_section_lines.append(sections[sname]['line_index'])
+
+        # Next section start (or end of document)
+        next_starts = [l for l in all_section_lines if l > start]
+        end = min(next_starts) if next_starts else len(lines)
+
+        return '\n'.join(lines[start:end])
+
+    # ═══════════════════════════════════════════════════════════
+    # STEP 3: Skill Matching (synonyms + groups + word boundary)
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _skill_in_text(skill_name, text_lower):
+        """
+        Check if a skill appears in text using word boundary matching.
+        GUARDRAIL: Uses \\b regex to prevent false positives.
+        'Reacted' will NOT match 'React'. 'Expressed' will NOT match 'Express'.
+        Returns: bool
+        """
+        skill_clean = skill_name.lower().strip()
+
+        # For very short skills (1-2 chars like 'R', 'Go', 'C'), require exact word match
+        if len(skill_clean) <= 2:
+            pattern = r'\b' + re.escape(skill_clean) + r'\b'
+            return bool(re.search(pattern, text_lower, re.IGNORECASE))
+
+        # For skills with special chars (C#, C++, .NET), escape and search
+        if any(c in skill_clean for c in '#.+'):
+            escaped = re.escape(skill_clean)
+            return escaped in text_lower or skill_clean in text_lower
+
+        # Standard word boundary match
+        pattern = r'\b' + re.escape(skill_clean) + r'\b'
+        return bool(re.search(pattern, text_lower, re.IGNORECASE))
+
+    @staticmethod
+    def _match_skills(text, sections, requirements):
+        """
+        Step 3: Match job requirements against resume text.
+        Uses synonyms, then skill groups for partial credit.
+
+        Returns: {
+            'matched': [{'name', 'importance', 'is_must_have', 'match_type', 'matched_via', 'depth_score'}],
+            'partial': [{'name', 'importance', 'is_must_have', 'matched_via', 'group_name'}],
+            'missing': [{'name', 'importance', 'is_must_have'}],
+            'total_weight': float,
+            'earned_weight': float,
+            'match_details': list of explanation strings,
+        }
+        """
+        from .skill_data import SKILL_SYNONYMS, get_canonical_name, get_skill_group, SKILL_GROUPS
+
+        text_lower = text.lower()
+        matched = []
+        partial = []
+        missing = []
+        match_details = []
         total_weight = 0
         earned_weight = 0
 
         for req in requirements:
-            skill = req.skill_name.lower().strip()
+            skill = req.skill_name.strip()
+            skill_lower = skill.lower()
             weight = req.importance  # 1-5
             is_must = req.is_must_have
-            
-            # Increase weight for must-have skills
             effective_weight = weight * (2 if is_must else 1)
             total_weight += effective_weight
 
-            # Check if skill appears in the resume text
-            # Use word boundary matching to avoid false positives
-            # e.g. "react" shouldn't match "reactive" unless "react" is standalone
-            found = ATSEngine._skill_found_in_text(skill, resume_text)
-
-            if found:
-                earned_weight += effective_weight
-                matched_skills.append({
-                    'name': req.skill_name,
+            # --- Try direct match ---
+            if ATSEngine._skill_in_text(skill_lower, text_lower):
+                depth = ATSEngine._calculate_skill_depth(skill_lower, text_lower, text, sections)
+                earned_weight += effective_weight * depth['multiplier']
+                matched.append({
+                    'name': skill,
                     'importance': weight,
                     'is_must_have': is_must,
+                    'match_type': 'direct',
+                    'matched_via': skill,
+                    'depth_score': depth,
+                })
+                continue
+
+            # --- Try synonym match ---
+            canonical = get_canonical_name(skill_lower)
+            synonym_found = False
+
+            # Check all synonyms of the canonical skill
+            synonyms_to_check = SKILL_SYNONYMS.get(canonical, [])
+            # Also check if what the user typed is a synonym of something else
+            all_to_check = [canonical] + list(synonyms_to_check)
+
+            for variant in all_to_check:
+                if variant and ATSEngine._skill_in_text(variant, text_lower):
+                    depth = ATSEngine._calculate_skill_depth(variant, text_lower, text, sections)
+                    earned_weight += effective_weight * depth['multiplier']
+                    matched.append({
+                        'name': skill,
+                        'importance': weight,
+                        'is_must_have': is_must,
+                        'match_type': 'synonym',
+                        'matched_via': variant,
+                        'depth_score': depth,
+                    })
+                    synonym_found = True
+                    break
+
+            if synonym_found:
+                continue
+
+            # --- Try skill group partial match (30% credit) ---
+            req_group = get_skill_group(skill_lower)
+            group_match_found = False
+
+            if req_group:
+                group_members = SKILL_GROUPS.get(req_group, [])
+                for member in group_members:
+                    if member.lower() == canonical:
+                        continue  # Skip self
+                    # Check member and its synonyms
+                    member_and_syns = [member] + SKILL_SYNONYMS.get(member, [])
+                    for variant in member_and_syns:
+                        if variant and ATSEngine._skill_in_text(variant, text_lower):
+                            # 30% partial credit
+                            partial_credit = 0.3
+                            earned_weight += effective_weight * partial_credit
+                            partial.append({
+                                'name': skill,
+                                'importance': weight,
+                                'is_must_have': is_must,
+                                'matched_via': member,
+                                'group_name': req_group,
+                            })
+                            # GUARDRAIL: Log partial match in details
+                            match_details.append(
+                                f'Partial match: {member.title()} found instead of {skill} '
+                                f'(same group: {req_group}) — 30% credit applied.'
+                            )
+                            group_match_found = True
+                            break
+                    if group_match_found:
+                        break
+
+            if group_match_found:
+                continue
+
+            # --- Not found at all ---
+            missing.append({
+                'name': skill,
+                'importance': weight,
+                'is_must_have': is_must,
+            })
+
+        return {
+            'matched': matched,
+            'partial': partial,
+            'missing': missing,
+            'total_weight': total_weight,
+            'earned_weight': earned_weight,
+            'match_details': match_details,
+        }
+
+    # ═══════════════════════════════════════════════════════════
+    # STEP 4: Skill Depth (frequency + context)
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _calculate_skill_depth(skill_variant, text_lower, text_original, sections):
+        """
+        Step 4: Determine how deeply a skill is represented in the resume.
+        Checks: frequency (capped at 3x), section context.
+
+        GUARDRAIL: Frequency capped at 3. "React React React..." spam = same as 3 mentions.
+
+        Returns: {
+            'count': int,
+            'in_skills_section': bool,
+            'in_experience_section': bool,
+            'in_projects_section': bool,
+            'multiplier': float (1.0 to 1.5),
+        }
+        """
+        # Count occurrences (word boundary)
+        pattern = r'\b' + re.escape(skill_variant) + r'\b'
+        matches = re.findall(pattern, text_lower, re.IGNORECASE)
+        raw_count = len(matches)
+
+        # GUARDRAIL: Cap at 3 mentions max
+        capped_count = min(raw_count, 3)
+
+        # Check which sections contain this skill
+        in_skills = False
+        in_experience = False
+        in_projects = False
+
+        if sections['skills']['found']:
+            skills_text = ATSEngine._get_section_text(text_original, sections, 'skills').lower()
+            in_skills = ATSEngine._skill_in_text(skill_variant, skills_text)
+
+        if sections['experience']['found']:
+            exp_text = ATSEngine._get_section_text(text_original, sections, 'experience').lower()
+            in_experience = ATSEngine._skill_in_text(skill_variant, exp_text)
+
+        if sections['projects']['found']:
+            proj_text = ATSEngine._get_section_text(text_original, sections, 'projects').lower()
+            in_projects = ATSEngine._skill_in_text(skill_variant, proj_text)
+
+        # Calculate depth multiplier (1.0 base, up to 1.5 max)
+        multiplier = 1.0
+
+        # Section context bonuses
+        if in_skills:
+            multiplier += 0.15  # Found in dedicated Skills section
+        if in_experience:
+            multiplier += 0.20  # Found in Experience (hands-on proof)
+        if in_projects:
+            multiplier += 0.10  # Found in Projects
+
+        # Frequency bonus (capped)
+        if capped_count >= 3:
+            multiplier += 0.10  # Mentioned 3+ times
+        elif capped_count >= 2:
+            multiplier += 0.05  # Mentioned twice
+
+        # Cap total multiplier at 1.5
+        multiplier = min(multiplier, 1.5)
+
+        return {
+            'count': raw_count,
+            'capped_count': capped_count,
+            'in_skills_section': in_skills,
+            'in_experience_section': in_experience,
+            'in_projects_section': in_projects,
+            'multiplier': multiplier,
+        }
+
+    # ═══════════════════════════════════════════════════════════
+    # STEP 5: Experience Calculation (date parsing)
+    # ═══════════════════════════════════════════════════════════
+
+    # Month name to number mapping
+    MONTH_MAP = {
+        'jan': 1, 'january': 1, 'feb': 2, 'february': 2,
+        'mar': 3, 'march': 3, 'apr': 4, 'april': 4,
+        'may': 5, 'jun': 6, 'june': 6,
+        'jul': 7, 'july': 7, 'aug': 8, 'august': 8,
+        'sep': 9, 'sept': 9, 'september': 9,
+        'oct': 10, 'october': 10, 'nov': 11, 'november': 11,
+        'dec': 12, 'december': 12,
+    }
+
+    # GUARDRAIL: "Present"/"Current"/"Till Date"/"Ongoing" = today's date
+    PRESENT_KEYWORDS = ['present', 'current', 'till date', 'ongoing', 'now', 'today']
+
+    @staticmethod
+    def _parse_date(date_str):
+        """
+        Parse a date string into (year, month) tuple.
+        Handles: 'Jan 2020', 'January 2020', '01/2020', '2020', 'Present'
+        Returns: (year, month) or None if unparseable.
+        """
+        date_str = date_str.strip().lower()
+
+        # Check for "Present" keywords
+        for kw in ATSEngine.PRESENT_KEYWORDS:
+            if kw in date_str:
+                today = date.today()
+                return (today.year, today.month)
+
+        # Try: "Jan 2020", "January 2020"
+        match = re.match(r'([a-z]+)\s*[\.,]?\s*(\d{4})', date_str)
+        if match:
+            month_str, year_str = match.groups()
+            month = ATSEngine.MONTH_MAP.get(month_str)
+            if month:
+                return (int(year_str), month)
+
+        # Try: "01/2020", "1/2020", "01-2020"
+        match = re.match(r'(\d{1,2})\s*[/\-]\s*(\d{4})', date_str)
+        if match:
+            month, year = int(match.group(1)), int(match.group(2))
+            if 1 <= month <= 12 and 1950 <= year <= 2100:
+                return (year, month)
+
+        # Try: just "2020"
+        match = re.match(r'^(\d{4})$', date_str)
+        if match:
+            year = int(match.group(1))
+            if 1950 <= year <= 2100:
+                return (year, 1)  # Assume January if only year
+
+        return None
+
+    @staticmethod
+    def _calculate_experience(text, job):
+        """
+        Step 5: Parse date ranges from resume, calculate total experience.
+        Handles overlapping dates, internship detection, and ambiguity.
+
+        Returns: {
+            'total_years': float,
+            'total_years_excl_internship': float,
+            'internship_months': int,
+            'date_ranges_found': int,
+            'date_ranges_parsed': int,
+            'unparseable_ranges': int,
+            'is_ambiguous': bool,
+            'experience_score': float (bonus/penalty based on job requirements),
+            'details': list of strings,
+            'flags': list of strings,
+        }
+        """
+        text_lower = text.lower()
+
+        # Date range patterns to find in text
+        # Matches: "Jan 2020 - Dec 2022", "2019-2022", "06/2020 - present"
+        date_range_patterns = [
+            # "Jan 2020 - Dec 2022" or "January 2020 – Present"
+            r'([a-z]+\.?\s*\d{4})\s*[-–—to]+\s*([a-z]+\.?\s*\d{4}|present|current|till\s*date|ongoing|now|today)',
+            # "01/2020 - 12/2022" or "01/2020 - Present"
+            r'(\d{1,2}\s*[/\-]\s*\d{4})\s*[-–—to]+\s*(\d{1,2}\s*[/\-]\s*\d{4}|present|current|till\s*date|ongoing|now|today)',
+            # "2019 - 2022" or "2020 - Present"
+            r'(\b\d{4})\s*[-–—to]+\s*(\d{4}|present|current|till\s*date|ongoing|now|today)',
+        ]
+
+        ranges = []
+        for pattern in date_range_patterns:
+            for match in re.finditer(pattern, text_lower):
+                start_str = match.group(1).strip()
+                end_str = match.group(2).strip()
+                ranges.append((start_str, end_str, match.start()))
+
+        result = {
+            'total_years': 0.0,
+            'total_years_excl_internship': 0.0,
+            'internship_months': 0,
+            'date_ranges_found': len(ranges),
+            'date_ranges_parsed': 0,
+            'unparseable_ranges': 0,
+            'is_ambiguous': False,
+            'experience_score': 0.0,
+            'details': [],
+            'flags': [],
+        }
+
+        if not ranges:
+            # Try fallback: look for "X years" or "X+ years" text
+            year_matches = re.findall(r'(\d+)\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:experience|exp)', text_lower)
+            if year_matches:
+                max_years = max(int(y) for y in year_matches)
+                result['total_years'] = float(max_years)
+                result['total_years_excl_internship'] = float(max_years)
+                result['details'].append(f'Experience mentioned as text: {max_years} years.')
+                result['flags'].append('Experience detected from text only (no date ranges found). Confidence reduced.')
+                result['is_ambiguous'] = True
+            else:
+                result['flags'].append('No experience dates or duration found in resume.')
+                result['is_ambiguous'] = True
+
+            # Score against job requirements
+            result['experience_score'] = ATSEngine._score_experience(
+                result['total_years'], job
+            )
+            return result
+
+        # Parse each date range
+        parsed_ranges = []
+        for start_str, end_str, text_pos in ranges:
+            start_date = ATSEngine._parse_date(start_str)
+            end_date = ATSEngine._parse_date(end_str)
+
+            if start_date and end_date:
+                result['date_ranges_parsed'] += 1
+
+                # Calculate months
+                months = (end_date[0] - start_date[0]) * 12 + (end_date[1] - start_date[1])
+                if months < 0:
+                    months = 0  # Invalid range, skip
+                    result['flags'].append(f'Invalid date range detected: {start_str} to {end_str}.')
+                    continue
+
+                # Check if internship (look for "intern" near this date range)
+                context_start = max(0, text_pos - 100)
+                context_end = min(len(text_lower), text_pos + 200)
+                context = text_lower[context_start:context_end]
+                is_internship = 'intern' in context
+
+                parsed_ranges.append({
+                    'start': start_date,
+                    'end': end_date,
+                    'months': months,
+                    'is_internship': is_internship,
                 })
             else:
-                missing_skills.append({
-                    'name': req.skill_name,
-                    'importance': weight,
-                    'is_must_have': is_must,
-                })
+                result['unparseable_ranges'] += 1
 
-        # ═══════════════════════════════════════════
-        # STEP 2: Calculate Score
-        # ═══════════════════════════════════════════
+        # GUARDRAIL: If many ranges couldn't be parsed, flag as ambiguous
+        if result['unparseable_ranges'] > 0:
+            result['is_ambiguous'] = True
+            result['flags'].append(
+                f'{result["unparseable_ranges"]} date range(s) could not be parsed.'
+            )
+
+        # Sort ranges by start date
+        parsed_ranges.sort(key=lambda r: (r['start'][0], r['start'][1]))
+
+        # Calculate total months (handle overlapping)
+        total_months = 0
+        intern_months = 0
+
+        if parsed_ranges:
+            # Merge overlapping ranges
+            merged = [parsed_ranges[0].copy()]
+            for current in parsed_ranges[1:]:
+                prev = merged[-1]
+                # Check overlap: current starts before previous ends
+                if (current['start'][0], current['start'][1]) <= (prev['end'][0], prev['end'][1]):
+                    # Extend end if current goes further
+                    if (current['end'][0], current['end'][1]) > (prev['end'][0], prev['end'][1]):
+                        prev['end'] = current['end']
+                        prev['months'] = (prev['end'][0] - prev['start'][0]) * 12 + (prev['end'][1] - prev['start'][1])
+                    # If either is internship, mark merged as internship
+                    if current['is_internship']:
+                        prev['is_internship'] = True
+                else:
+                    merged.append(current.copy())
+
+            for r in merged:
+                if r['is_internship']:
+                    intern_months += r['months']
+                else:
+                    total_months += r['months']
+
+        result['internship_months'] = intern_months
+
+        # Apply internship policy from job
+        internship_policy = getattr(job, 'internship_policy', 'half')
+        if internship_policy == 'full':
+            total_months += intern_months
+            effective_intern = intern_months
+        elif internship_policy == 'half':
+            total_months += int(intern_months * 0.5)
+            effective_intern = int(intern_months * 0.5)
+        else:  # ignore
+            effective_intern = 0
+
+        result['total_years'] = round(total_months / 12, 1)
+        result['total_years_excl_internship'] = round((total_months - effective_intern) / 12 if internship_policy != 'ignore' else total_months / 12, 1)
+
+        if intern_months > 0:
+            result['details'].append(
+                f'Internship: {round(intern_months / 12, 1)} years detected. '
+                f'Policy: {internship_policy}.'
+            )
+
+        result['details'].append(
+            f'Total calculated experience: {result["total_years"]} years '
+            f'(from {result["date_ranges_parsed"]} date range(s)).'
+        )
+
+        # Score against job requirements
+        result['experience_score'] = ATSEngine._score_experience(
+            result['total_years'], job
+        )
+
+        return result
+
+    @staticmethod
+    def _score_experience(total_years, job):
+        """
+        Score experience against job min/max requirements.
+        Returns a bonus/penalty value.
+        """
+        min_exp = getattr(job, 'min_experience', 0) or 0
+        max_exp = getattr(job, 'max_experience', None)
+
+        if min_exp == 0 and max_exp is None:
+            # No requirement set
+            return 0
+
+        if total_years >= min_exp:
+            if max_exp is None or total_years <= max_exp:
+                return 10  # Perfect match bonus
+            else:
+                # Overqualified — small flag, no penalty
+                return 5
+        else:
+            # Under-qualified
+            gap = min_exp - total_years
+            if gap >= 3:
+                return -20  # Way under
+            elif gap >= 1:
+                return -15  # Below minimum
+            else:
+                return -10  # Slightly under
+
+    # ═══════════════════════════════════════════════════════════
+    # STEP 6: Education Check
+    # ═══════════════════════════════════════════════════════════
+
+    # Education level hierarchy (higher number = higher degree)
+    EDUCATION_HIERARCHY = {
+        'any': 1,
+        'bachelors': 2,
+        'masters': 3,
+        'phd': 4,
+    }
+
+    DEGREE_PATTERNS = {
+        'phd': [r'\bph\.?d\b', r'\bdoctorate\b', r'\bdoctor of philosophy\b'],
+        'masters': [r'\bm\.?s\.?\b', r'\bm\.?sc\b', r'\bm\.?tech\b', r'\bmaster', r'\bmba\b', r'\bm\.?eng\b', r'\bm\.?a\b'],
+        'bachelors': [r'\bb\.?s\.?\b', r'\bb\.?sc\b', r'\bb\.?tech\b', r'\bbachelor', r'\bb\.?eng\b', r'\bb\.?a\b', r'\bb\.?com\b', r'\bbca\b', r'\bbba\b'],
+        'any': [r'\bdegree\b', r'\bdiploma\b', r'\bcertificate\b', r'\buniversity\b', r'\bcollege\b'],
+    }
+
+    @staticmethod
+    def _check_education(text, job):
+        """
+        Step 6: Check education level against job requirement.
+        Returns: {
+            'detected_level': str or None,
+            'required_level': str,
+            'meets_requirement': bool,
+            'education_score': int,
+            'details': str,
+        }
+        """
+        required = getattr(job, 'education_level', '') or ''
+        text_lower = text.lower()
+
+        # Detect highest education level in resume
+        detected = None
+        for level in ['phd', 'masters', 'bachelors', 'any']:
+            patterns = ATSEngine.DEGREE_PATTERNS.get(level, [])
+            for pattern in patterns:
+                if re.search(pattern, text_lower, re.IGNORECASE):
+                    detected = level
+                    break
+            if detected:
+                break
+
+        result = {
+            'detected_level': detected,
+            'required_level': required,
+            'meets_requirement': True,
+            'education_score': 0,
+            'details': '',
+        }
+
+        if not required:
+            # No requirement, bonus if education detected
+            if detected:
+                result['education_score'] = 3
+                result['details'] = f'Education detected: {detected}. No formal requirement set.'
+            else:
+                result['details'] = 'No education requirement set. No education section detected.'
+            return result
+
+        if detected is None:
+            result['meets_requirement'] = False
+            result['education_score'] = -5
+            result['details'] = f'Job requires {required} but no education detected in resume.'
+            return result
+
+        # Compare hierarchy
+        detected_rank = ATSEngine.EDUCATION_HIERARCHY.get(detected, 0)
+        required_rank = ATSEngine.EDUCATION_HIERARCHY.get(required, 0)
+
+        if detected_rank >= required_rank:
+            result['education_score'] = 5
+            result['details'] = f'Education requirement met: {detected} (required: {required}).'
+        else:
+            result['meets_requirement'] = False
+            result['education_score'] = -5
+            result['details'] = f'Education gap: detected {detected}, but job requires {required}.'
+
+        return result
+
+    # ═══════════════════════════════════════════════════════════
+    # STEP 7: Calculate Final Score (with stability caps)
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _calculate_final_score(skill_result, experience_result, education_result, quality):
+        """
+        Step 7: Calculate the final ATS score.
+
+        GUARDRAIL: Score Stability Caps:
+        - If skill match < 20% → total score capped at 30 max
+        - If skill match < 40% → total score capped at 50 max
+        - Bonuses (experience, education) can NOT push score beyond cap
+        """
+        # Base score from skill matching
+        total_weight = skill_result['total_weight']
+        earned_weight = skill_result['earned_weight']
+
         if total_weight > 0:
-            base_score = round((earned_weight / total_weight) * 100)
+            skill_match_pct = (earned_weight / total_weight) * 100
         else:
-            base_score = 50
+            skill_match_pct = 50  # No requirements = neutral
 
-        # Bonus: Check if description keywords appear in resume (+/- 10 points)
-        desc_keywords = ATSEngine._extract_keywords(job_description)
-        desc_match_count = sum(1 for kw in desc_keywords if kw in resume_text)
-        desc_bonus = min(10, round((desc_match_count / max(len(desc_keywords), 1)) * 10))
-        
-        # Penalty: Missing must-have skills is a big deal
-        must_have_missing = [s for s in missing_skills if s['is_must_have']]
-        must_have_penalty = len(must_have_missing) * 15
+        base_score = round(skill_match_pct)
 
-        final_score = max(0, min(100, base_score + desc_bonus - must_have_penalty))
+        # Add experience bonus/penalty
+        score = base_score + experience_result['experience_score']
 
-        # ═══════════════════════════════════════════
-        # STEP 3: Detect Resume Quality Signals
-        # ═══════════════════════════════════════════
-        has_experience = any(kw in resume_text for kw in ATSEngine.SECTION_KEYWORDS['experience'])
-        has_education = any(kw in resume_text for kw in ATSEngine.SECTION_KEYWORDS['education'])
-        has_projects = any(kw in resume_text for kw in ATSEngine.SECTION_KEYWORDS['projects'])
-        
-        # Check for years of experience mentions
-        year_matches = re.findall(r'(\d+)\+?\s*(?:years?|yrs?)', resume_text)
-        max_years = max([int(y) for y in year_matches], default=0)
+        # Add education bonus/penalty
+        score += education_result['education_score']
 
-        # ═══════════════════════════════════════════
-        # STEP 4: Build Strengths
-        # ═══════════════════════════════════════════
+        # Quality bonuses/penalties
+        if not quality['has_email']:
+            score -= 5
+        if quality.get('flags'):
+            for flag in quality['flags']:
+                if 'skill stuffing' in flag.lower():
+                    score -= 5
+
+        # GUARDRAIL: Score stability caps
+        if total_weight > 0:
+            if skill_match_pct < 20:
+                score = min(score, 30)
+            elif skill_match_pct < 40:
+                score = min(score, 50)
+
+        # Final cap 0-100
+        score = max(0, min(100, score))
+
+        return {
+            'score': score,
+            'skill_match_pct': round(skill_match_pct, 1),
+            'base_score': base_score,
+        }
+
+    # ═══════════════════════════════════════════════════════════
+    # STEP 8: Confidence Calculation
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _calculate_confidence(quality, sections, experience_result, skill_result):
+        """
+        Step 8: Calculate scoring confidence based on data quality.
+        GUARDRAIL: Low confidence → auto-triggers needs_review.
+        """
+        score = 0
+        reasons = []
+
+        # Section clarity
+        if sections['sections_found_count'] >= 3:
+            score += 3
+        elif sections['sections_found_count'] >= 2:
+            score += 2
+        else:
+            score += 0
+            reasons.append('Few or no standard resume sections detected.')
+
+        # Date parsing quality
+        if experience_result['date_ranges_found'] > 0:
+            if experience_result['unparseable_ranges'] == 0:
+                score += 3
+            else:
+                score += 1
+                reasons.append(
+                    f'{experience_result["unparseable_ranges"]} date range(s) could not be parsed.'
+                )
+        else:
+            if experience_result['is_ambiguous']:
+                score += 0
+                reasons.append('No date ranges found in resume — experience is uncertain.')
+            else:
+                score += 1
+
+        # Word count quality
+        if quality['word_count'] >= 300:
+            score += 2
+        elif quality['word_count'] >= 150:
+            score += 1
+        else:
+            reasons.append('Resume is very short, limited data to analyze.')
+
+        # Contact info
+        if quality['has_email'] and quality['has_phone']:
+            score += 1
+        elif not quality['has_email']:
+            reasons.append('No contact email found.')
+
+        # Skill coverage
+        total_skills = len(skill_result['matched']) + len(skill_result['partial']) + len(skill_result['missing'])
+        if total_skills > 0 and len(skill_result['matched']) > 0:
+            score += 1
+
+        # Determine level: 0-4 = low, 5-7 = medium, 8-10 = high
+        if score >= 8:
+            level = 'high'
+        elif score >= 5:
+            level = 'medium'
+        else:
+            level = 'low'
+
+        return {
+            'level': level,
+            'score': score,
+            'reasons': reasons,
+        }
+
+    # ═══════════════════════════════════════════════════════════
+    # STEP 9: Manual Review Flag
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _determine_review_needed(final_score, confidence, skill_result, experience_result):
+        """
+        Step 9: Determine if HR review is needed.
+        GUARDRAIL: Low confidence → auto-triggers review.
+        """
+        needs_review = False
+        review_reason = ''
+
+        # Low confidence = always review
+        if confidence['level'] == 'low':
+            needs_review = True
+            review_reason = 'Low data confidence — resume may have parsing issues or insufficient information.'
+
+        # Borderline score
+        elif 35 <= final_score <= 65:
+            needs_review = True
+            review_reason = f'Borderline score ({final_score}) — candidate may be a fit depending on context.'
+
+        # Conflicting signals: must-have missing but score is decent
+        elif final_score >= 50:
+            missing_musts = [m for m in skill_result['missing'] if m['is_must_have']]
+            if missing_musts:
+                needs_review = True
+                names = ', '.join(m['name'] for m in missing_musts)
+                review_reason = f'Score is {final_score} but must-have skill(s) missing: {names}.'
+
+        # Experience couldn't be calculated
+        elif experience_result['is_ambiguous'] and experience_result['total_years'] == 0:
+            needs_review = True
+            review_reason = 'Experience could not be determined from resume.'
+
+        return {
+            'needs_review': needs_review,
+            'review_reason': review_reason,
+        }
+
+    # ═══════════════════════════════════════════════════════════
+    # STEPS 10-12: Explanation, Strengths, Weaknesses
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _build_explanation(final_score_data, skill_result, experience_result, education_result, confidence):
+        """
+        Step 10: Build deterministic explanation.
+        GUARDRAIL: Every sentence comes from actual data.
+        GUARDRAIL: Score-explanation must NOT contradict.
+        """
+        score = final_score_data['score']
+        skill_pct = final_score_data['skill_match_pct']
+        lines = []
+
+        total_skills = len(skill_result['matched']) + len(skill_result['partial']) + len(skill_result['missing'])
+
+        # Score-to-tone mapping (GUARDRAIL: prevents contradictions)
+        if score >= 81:
+            tone = 'strong'
+            summary = 'This candidate appears to be a strong match for this role.'
+        elif score >= 61:
+            tone = 'good'
+            summary = 'This candidate is a good potential match.'
+        elif score >= 31:
+            tone = 'moderate'
+            summary = 'This candidate shows a moderate match. Review recommended.'
+        else:
+            tone = 'weak'
+            summary = 'This candidate does not appear to be a strong match based on the resume.'
+
+        # Skill summary
+        matched_count = len(skill_result['matched'])
+        partial_count = len(skill_result['partial'])
+        missing_count = len(skill_result['missing'])
+
+        lines.append(
+            f'Matched {matched_count} of {total_skills} required skills ({skill_pct:.0f}% skill match).'
+        )
+
+        if partial_count > 0:
+            lines.append(f'{partial_count} skill(s) matched via related technology (partial credit).')
+
+        if missing_count > 0:
+            missing_names = [m['name'] for m in skill_result['missing']]
+            lines.append(f'Missing: {", ".join(missing_names)}.')
+
+        # Partial match details
+        for detail in skill_result['match_details']:
+            lines.append(detail)
+
+        # Must-have status
+        missing_musts = [m['name'] for m in skill_result['missing'] if m['is_must_have']]
+        if missing_musts:
+            lines.append(f'CRITICAL: Must-have skill(s) missing: {", ".join(missing_musts)}.')
+
+        # Experience summary
+        for detail in experience_result['details']:
+            lines.append(detail)
+
+        # Education summary
+        if education_result['details']:
+            lines.append(education_result['details'])
+
+        # Confidence note
+        if confidence['level'] != 'high':
+            lines.append(
+                f'Confidence: {confidence["level"].upper()} — '
+                + '; '.join(confidence['reasons'][:2]) if confidence['reasons'] else ''
+            )
+
+        lines.append(summary)
+
+        return ' '.join(lines)
+
+    @staticmethod
+    def _build_strengths(skill_result, experience_result, education_result, quality, sections):
+        """Step 11: Build strengths list from matched data."""
         strengths = []
-        
-        if matched_skills:
-            top_matched = sorted(matched_skills, key=lambda x: x['importance'], reverse=True)[:3]
-            skill_names = ", ".join([s['name'] for s in top_matched])
-            strengths.append(f"Resume demonstrates proficiency in key required skills: {skill_names}.")
 
-        must_have_matched = [s for s in matched_skills if s['is_must_have']]
-        if must_have_matched:
-            names = ", ".join([s['name'] for s in must_have_matched])
-            strengths.append(f"Covers critical must-have requirements: {names}.")
+        # Matched skills
+        matched_names = [m['name'] for m in skill_result['matched']]
+        if matched_names:
+            if len(matched_names) <= 5:
+                strengths.append(f'Has required skills: {", ".join(matched_names)}.')
+            else:
+                strengths.append(f'Has {len(matched_names)} of the required skills.')
 
-        if max_years >= 3:
-            strengths.append(f"Shows {max_years}+ years of relevant professional experience.")
-        
-        if has_education:
-            strengths.append("Educational background is documented and verifiable.")
-        
-        if has_projects:
-            strengths.append("Includes a portfolio or project section demonstrating practical work.")
-        
-        match_pct = round((len(matched_skills) / max(len(requirements), 1)) * 100)
-        if match_pct >= 70:
-            strengths.append(f"Strong overall requirement coverage at {match_pct}% skill match rate.")
-
-        if not strengths:
-            strengths.append("Resume was successfully parsed and contains readable content.")
-
-        # ═══════════════════════════════════════════
-        # STEP 5: Build Weaknesses
-        # ═══════════════════════════════════════════
-        weaknesses = []
-        
-        if must_have_missing:
-            names = ", ".join([s['name'] for s in must_have_missing])
-            weaknesses.append(f"Missing critical must-have skills: {names}. This is a significant gap.")
-        
-        optional_missing = [s for s in missing_skills if not s['is_must_have']]
-        if optional_missing:
-            names = ", ".join([s['name'] for s in optional_missing[:3]])
-            weaknesses.append(f"Does not mention these preferred skills: {names}.")
-        
-        if not has_experience:
-            weaknesses.append("Resume does not clearly highlight a work experience section.")
-        
-        if max_years == 0:
-            weaknesses.append("No specific years of experience could be detected from the resume.")
-        elif max_years < 2:
-            weaknesses.append(f"Shows only {max_years} year(s) of experience, which may be below expectations.")
-        
-        if not has_education:
-            weaknesses.append("No formal education section was detected in the resume.")
-
-        if not weaknesses:
-            weaknesses.append("No significant gaps detected based on the defined requirements.")
-
-        # ═══════════════════════════════════════════
-        # STEP 6: Generate Interview Questions
-        # ═══════════════════════════════════════════
-        questions = []
-        
-        for skill in must_have_missing[:2]:
-            questions.append(
-                f"We noticed {skill['name']} wasn't mentioned in your resume. "
-                f"Can you describe any hands-on experience you have with {skill['name']}?"
-            )
-        
-        for skill in optional_missing[:1]:
-            questions.append(
-                f"This role benefits from knowledge of {skill['name']}. "
-                f"How comfortable are you with picking up {skill['name']} if needed?"
-            )
-        
-        if max_years < 3:
-            questions.append(
-                "Can you walk us through your most complex project and what challenges you overcame?"
-            )
-        
-        if matched_skills:
-            top_skill = matched_skills[0]['name']
-            questions.append(
-                f"You've listed {top_skill} on your resume. "
-                f"Can you describe a recent project where you used {top_skill} extensively?"
-            )
-
-        questions.append(
-            "What attracted you to this role, and how do you see yourself contributing in the first 90 days?"
-        )
-
-        # ═══════════════════════════════════════════
-        # STEP 7: Build Explanation
-        # ═══════════════════════════════════════════
-        total_req = len(requirements)
-        matched_count = len(matched_skills)
-        
-        explanation = (
-            f"Resume was analyzed against {total_req} job requirement(s). "
-            f"{matched_count} of {total_req} required skills were found in the resume text "
-            f"({match_pct}% match rate). "
-        )
-        
-        if must_have_missing:
-            explanation += (
-                f"WARNING: {len(must_have_missing)} must-have skill(s) are missing, "
-                f"which significantly impacts the overall score. "
-            )
-        
-        if final_score >= 80:
-            explanation += "Overall, this candidate is a strong match for the role."
-        elif final_score >= 60:
-            explanation += "This candidate shows moderate alignment and may be worth interviewing."
-        elif final_score >= 40:
-            explanation += "This candidate has notable gaps but could be considered if the talent pool is limited."
-        else:
-            explanation += "This candidate does not appear to be a strong match for this role based on the resume content."
-
-        return {
-            "overall_score": final_score,
-            "explanation": explanation,
-            "strengths": strengths[:4],
-            "weaknesses": weaknesses[:3],
-            "interview_questions": questions[:4]
-        }
-
-    @staticmethod
-    def _skill_found_in_text(skill, text):
-        """
-        Smart skill matching. Handles multi-word skills and common variations.
-        e.g. "react" matches "react", "react.js", "reactjs" but NOT "reactive"
-        """
-        skill_clean = skill.lower().strip()
-        
-        # Direct substring check first (fast path)
-        if skill_clean in text:
-            return True
-        
-        # Try common tech variations: "react" -> "react.js", "reactjs"
-        variations = [
-            skill_clean,
-            skill_clean.replace(' ', ''),           # "machine learning" -> "machinelearning"
-            skill_clean.replace('.js', ''),           # "node.js" -> "node"
-            skill_clean + '.js',                      # "react" -> "react.js"
-            skill_clean + 'js',                       # "react" -> "reactjs"
-            skill_clean.replace(' ', '-'),            # "ci cd" -> "ci-cd"
-            skill_clean.replace('-', ' '),            # "ci-cd" -> "ci cd"
-            skill_clean.replace('/', ' '),            # "ci/cd" -> "ci cd"
+        # Strong depth skills
+        deep_skills = [
+            m['name'] for m in skill_result['matched']
+            if m.get('depth_score', {}).get('multiplier', 1.0) >= 1.3
         ]
-        
-        return any(v in text for v in variations)
+        if deep_skills:
+            strengths.append(f'Strong depth in: {", ".join(deep_skills[:5])}.')
+
+        # Good experience
+        if experience_result['total_years'] > 0:
+            strengths.append(f'{experience_result["total_years"]} years of experience detected.')
+
+        # Education met
+        if education_result.get('meets_requirement'):
+            if education_result['detected_level']:
+                strengths.append(f'Education: {education_result["detected_level"]} detected.')
+
+        # Well-structured resume
+        if sections['sections_found_count'] >= 3:
+            strengths.append('Well-structured resume with clear sections.')
+
+        # Contact info
+        if quality['has_email'] and quality['has_phone']:
+            strengths.append('Complete contact information provided.')
+
+        return strengths if strengths else ['File was uploaded and processed successfully.']
 
     @staticmethod
-    def _extract_keywords(text):
-        """Extract meaningful keywords from job description."""
-        # Remove common stop words
-        stop_words = {
-            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-            'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
-            'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-            'could', 'should', 'may', 'might', 'can', 'shall', 'this', 'that',
-            'these', 'those', 'we', 'you', 'they', 'it', 'our', 'your', 'their',
-            'its', 'as', 'if', 'not', 'no', 'so', 'up', 'out', 'about',
-        }
-        words = re.findall(r'\b[a-z]{3,}\b', text.lower())
-        return [w for w in set(words) if w not in stop_words]
+    def _build_weaknesses(skill_result, experience_result, education_result, quality, sections):
+        """Step 12: Build weaknesses list from missing data."""
+        weaknesses = []
+
+        # Missing must-haves
+        missing_musts = [m['name'] for m in skill_result['missing'] if m['is_must_have']]
+        if missing_musts:
+            weaknesses.append(f'Missing critical must-have skills: {", ".join(missing_musts)}.')
+
+        # Other missing skills
+        missing_others = [m['name'] for m in skill_result['missing'] if not m['is_must_have']]
+        if missing_others:
+            weaknesses.append(f'Missing preferred skills: {", ".join(missing_others[:5])}.')
+
+        # Experience issues
+        for flag in experience_result['flags']:
+            weaknesses.append(flag)
+
+        # Education gap
+        if not education_result.get('meets_requirement', True):
+            weaknesses.append(education_result['details'])
+
+        # Quality issues
+        for flag in quality['flags']:
+            weaknesses.append(flag)
+
+        # Poor structure
+        if sections['sections_found_count'] < 2:
+            weaknesses.append('Resume lacks clear section headers (Skills, Experience, Education).')
+
+        return weaknesses if weaknesses else ['No significant weaknesses identified.']
+
+    # ═══════════════════════════════════════════════════════════
+    # MAIN EVALUATE — Full 12-Step Pipeline
+    # ═══════════════════════════════════════════════════════════
 
     @staticmethod
-    def _no_resume_result():
-        """Return when no resume text could be extracted."""
-        return {
-            "overall_score": 0,
-            "explanation": "Could not extract any text from the uploaded file. The file may not be a valid resume PDF, or it may be image-based (scanned). Please upload a text-based PDF resume.",
-            "strengths": ["File was successfully uploaded to the system."],
-            "weaknesses": [
-                "No readable text could be extracted from the PDF.",
-                "The file may be a scanned image, an invoice, or a non-resume document.",
-                "ATS scoring requires text-based PDF resumes to function properly."
-            ],
-            "interview_questions": [
-                "Could you provide a text-based version of your resume for our review?"
-            ]
-        }
+    def evaluate(candidate):
+        """
+        Main entry point. Evaluate a candidate's resume against their job.
+        Returns structured result dict with deterministic, explainable scoring.
+        """
+        job = candidate.job
 
-    @staticmethod
-    def _description_only_match(resume_text, description, job_title):
-        """Fallback when no specific skills/requirements are defined for the job."""
-        keywords = ATSEngine._extract_keywords(description)
-        title_keywords = ATSEngine._extract_keywords(job_title.lower())
-        all_keywords = list(set(keywords + title_keywords))
-        
-        if not all_keywords:
+        # Get parsed resume text
+        resume_text = ""
+        try:
+            if hasattr(candidate, 'resume') and candidate.resume:
+                resume_text = (candidate.resume.parsed_text or "").strip()
+        except Exception:
+            resume_text = ""
+
+        # STEP 1: Resume Quality Check
+        quality = ATSEngine._check_resume_quality(resume_text)
+
+        if not quality['is_valid']:
             return {
-                "overall_score": 50,
-                "explanation": "No job requirements were defined, so a detailed skill match could not be performed. Add specific skills to the job to get accurate scoring.",
-                "strengths": ["Resume was successfully parsed."],
-                "weaknesses": ["No specific job requirements to match against. Please add skills to the job posting."],
-                "interview_questions": ["Tell us about your relevant experience for this role."]
+                'overall_score': 0,
+                'explanation': quality['stop_reason'],
+                'strengths': ['File was uploaded successfully.'],
+                'weaknesses': quality['flags'] if quality['flags'] else [quality['stop_reason']],
+                'interview_questions': [],
+                'confidence': 'low',
+                'confidence_reasons': [quality['stop_reason']],
+                'needs_review': True,
+                'review_reason': 'Resume could not be validated as a proper document.',
             }
-        
-        matched = [kw for kw in all_keywords if kw in resume_text]
-        score = round((len(matched) / len(all_keywords)) * 100)
-        score = max(10, min(90, score))  # Cap between 10-90 for description-only
-        
+
+        # STEP 2: Section Detection
+        sections = ATSEngine._detect_sections(resume_text)
+
+        # STEP 3+4: Skill Matching + Depth
+        requirements = list(job.requirements.all())
+        skill_result = ATSEngine._match_skills(resume_text, sections, requirements)
+
+        # STEP 5: Experience Calculation
+        experience_result = ATSEngine._calculate_experience(resume_text, job)
+
+        # STEP 6: Education Check
+        education_result = ATSEngine._check_education(resume_text, job)
+
+        # STEP 7: Final Score
+        final_score_data = ATSEngine._calculate_final_score(
+            skill_result, experience_result, education_result, quality
+        )
+
+        # STEP 8: Confidence
+        confidence = ATSEngine._calculate_confidence(
+            quality, sections, experience_result, skill_result
+        )
+
+        # STEP 9: Review Flag
+        review = ATSEngine._determine_review_needed(
+            final_score_data['score'], confidence, skill_result, experience_result
+        )
+
+        # STEP 10: Explanation
+        explanation = ATSEngine._build_explanation(
+            final_score_data, skill_result, experience_result, education_result, confidence
+        )
+
+        # STEP 11: Strengths
+        strengths = ATSEngine._build_strengths(
+            skill_result, experience_result, education_result, quality, sections
+        )
+
+        # STEP 12: Weaknesses
+        weaknesses = ATSEngine._build_weaknesses(
+            skill_result, experience_result, education_result, quality, sections
+        )
+
         return {
-            "overall_score": score,
-            "explanation": f"Matched {len(matched)} of {len(all_keywords)} keywords from the job description. Note: Add specific skill requirements to the job for more accurate scoring.",
-            "strengths": [f"Resume contains relevant keywords: {', '.join(matched[:5])}."] if matched else ["Resume was parsed successfully."],
-            "weaknesses": [f"Job description keywords not found in resume: {', '.join([k for k in all_keywords if k not in resume_text][:5])}."],
-            "interview_questions": [
-                "Walk us through your most relevant experience for this position.",
-                "What specific skills do you bring that align with this role?"
-            ]
+            'overall_score': final_score_data['score'],
+            'explanation': explanation,
+            'strengths': strengths,
+            'weaknesses': weaknesses,
+            'interview_questions': [],
+            'confidence': confidence['level'],
+            'confidence_reasons': confidence['reasons'],
+            'needs_review': review['needs_review'],
+            'review_reason': review['review_reason'],
         }
+

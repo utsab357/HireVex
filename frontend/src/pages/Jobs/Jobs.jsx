@@ -91,7 +91,7 @@ const Jobs = () => {
 
               <div className="flex items-center justify-between border-t border-[rgba(73,69,79,0.15)] pt-4">
                 <div className="text-xs text-on-surface-variant">
-                  <span className="font-semibold text-on-surface">0</span> Candidates
+                  <span className="font-semibold text-on-surface">{job.candidates_count ?? job.candidates?.length ?? 0}</span> Candidates
                 </div>
                 <div className="text-xs text-primary font-medium group-hover:underline">View Pipeline &rarr;</div>
               </div>

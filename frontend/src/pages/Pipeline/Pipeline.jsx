@@ -7,7 +7,9 @@ import ScoreRing from '../../components/shared/ScoreRing';
 const STAGES = [
   { id: 'new', label: 'New Applicants', color: 'border-l-status-info' },
   { id: 'review', label: 'Under Review', color: 'border-l-status-warning' },
+  { id: 'shortlisted', label: 'Shortlisted', color: 'border-l-tertiary' },
   { id: 'interview', label: 'Interviewing', color: 'border-l-primary' },
+  { id: 'on_hold', label: 'On Hold', color: 'border-l-on-surface-variant' },
   { id: 'offer', label: 'Offer Stage', color: 'border-l-status-success' },
   { id: 'rejected', label: 'Rejected', color: 'border-l-status-error' }
 ];

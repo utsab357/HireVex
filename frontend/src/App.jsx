@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './store/AuthContext';
 import AppLayout from './components/layout/AppLayout';
 
@@ -29,6 +29,7 @@ function App() {
             <Route path="/jobs" element={<Jobs />} />
             <Route path="/jobs/:id" element={<JobDetail />} />
             <Route path="/candidates/:id" element={<CandidateDetail />} />
+            <Route path="/candidates" element={<Navigate to="/jobs" replace />} />
             <Route path="/pipeline" element={<Pipeline />} />
           </Route>
         </Routes>

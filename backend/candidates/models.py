@@ -6,7 +6,9 @@ class Candidate(models.Model):
     STATUS_CHOICES = [
         ('new', 'New'),
         ('review', 'Review'),
+        ('shortlisted', 'Shortlisted'),
         ('interview', 'Interview'),
+        ('on_hold', 'On Hold'),
         ('offer', 'Offer'),
         ('rejected', 'Rejected'),
     ]
