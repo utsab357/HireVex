@@ -247,3 +247,61 @@ def are_in_same_group(skill_a, skill_b):
     if group_a is None or group_b is None:
         return False
     return group_a == group_b
+
+
+# ═══════════════════════════════════════════════════════════════
+# LAYER 4: Skill Prerequisites (Phase 7)
+# Maps skills to their foundation skills.
+# If a candidate has all prerequisites for a missing skill,
+# they get higher partial credit + lower teach-time.
+# ═══════════════════════════════════════════════════════════════
+
+SKILL_PREREQUISITES = {
+    # Frontend frameworks
+    'react': ['javascript', 'html', 'css'],
+    'angular': ['javascript', 'typescript', 'html', 'css'],
+    'vue': ['javascript', 'html', 'css'],
+    'next.js': ['react', 'javascript'],
+    'nuxt': ['vue', 'javascript'],
+    'svelte': ['javascript', 'html', 'css'],
+
+    # Backend frameworks
+    'django': ['python'],
+    'flask': ['python'],
+    'fastapi': ['python'],
+    'express': ['node', 'javascript'],
+    'spring boot': ['java'],
+    'ruby on rails': ['ruby'],
+    'laravel': ['php'],
+    'asp.net': ['c#'],
+
+    # DevOps / Infrastructure
+    'kubernetes': ['docker', 'linux'],
+    'docker': ['linux'],
+    'terraform': ['cloud computing'],
+    'ansible': ['linux'],
+    'jenkins': ['linux', 'git'],
+
+    # Cloud
+    'aws': ['cloud computing', 'linux'],
+    'azure': ['cloud computing'],
+    'gcp': ['cloud computing'],
+
+    # Databases
+    'mongodb': ['javascript'],
+    'redis': ['linux'],
+    'elasticsearch': ['linux'],
+
+    # Data
+    'pandas': ['python'],
+    'numpy': ['python'],
+    'tensorflow': ['python', 'numpy'],
+    'pytorch': ['python', 'numpy'],
+    'spark': ['python', 'java'],
+
+    # Mobile
+    'react native': ['react', 'javascript'],
+    'flutter': ['dart'],
+    'swift': [],
+    'kotlin': ['java'],
+}

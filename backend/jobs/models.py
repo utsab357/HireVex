@@ -25,6 +25,11 @@ class Job(models.Model):
         ('half', 'Count at 50%'),
         ('ignore', 'Do not count'),
     ])
+    knockout_enabled = models.BooleanField(default=False, help_text='Enable auto-reject for candidates who fail hard requirements')
+    # Configurable scoring weights (Phase 6) — must sum to ~1.0
+    skill_weight = models.FloatField(default=0.60, help_text='Weight for skill matching (0-1)')
+    experience_weight = models.FloatField(default=0.25, help_text='Weight for experience (0-1)')
+    education_weight = models.FloatField(default=0.15, help_text='Weight for education (0-1)')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

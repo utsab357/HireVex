@@ -16,6 +16,10 @@ class AIEvaluation(models.Model):
     confidence_reasons = models.JSONField(default=list)
     needs_review = models.BooleanField(default=False)
     review_reason = models.CharField(max_length=500, blank=True, default='')
+    score_breakdown = models.JSONField(default=dict, blank=True)  # Detailed scoring components
+    parsed_data = models.JSONField(default=dict, blank=True)  # Structured resume data
+    red_flags = models.JSONField(default=list, blank=True)  # Red flags from red_flags engine
+    role_relevance = models.IntegerField(null=True, blank=True)  # Role relevance score 0-100
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

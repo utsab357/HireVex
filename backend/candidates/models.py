@@ -36,7 +36,36 @@ class Resume(models.Model):
     candidate = models.OneToOneField(Candidate, on_delete=models.CASCADE, related_name='resume')
     file = models.FileField(upload_to='resumes/')
     parsed_text = models.TextField(blank=True, null=True) # Where PyPDF2 dumps the raw text
+    parsed_data = models.JSONField(blank=True, null=True)  # Structured extraction: work entries, education, certs
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"Resume for {self.candidate}"
+
+
+class Tag(models.Model):
+    """User-defined tags for categorizing candidates."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='tags')
+    name = models.CharField(max_length=50)
+    color = models.CharField(max_length=7, default='#6366f1')  # Hex color
+
+    class Meta:
+        unique_together = ('user', 'name')
+
+    def __str__(self):
+        return self.name
+
+
+class CandidateTag(models.Model):
+    """Many-to-many relationship between candidates and tags."""
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='candidate_tags')
+    tag = models.ForeignKey(Tag, on_delete=models.CASCADE, related_name='candidate_tags')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('candidate', 'tag')
+
+    def __str__(self):
+        return f"{self.candidate} — {self.tag.name}"
+

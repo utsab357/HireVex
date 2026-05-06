@@ -276,7 +276,7 @@ const JobDetail = () => {
             <div className="flex items-center gap-1"><MapPin size={16} /> {job.location}</div>
             <span className="w-1 h-1 rounded-full bg-on-surface-variant/30"></span>
             <button 
-              onClick={() => { setEditForm({ title: job.title, department: job.department, location: job.location, description: job.description, status: job.status, requirements: job.requirements.map(r => ({skill_name: r.skill_name, importance: r.importance, is_must_have: r.is_must_have})) }); setEditingJob(true); }}
+              onClick={() => { setEditForm({ title: job.title, department: job.department, location: job.location, description: job.description, status: job.status, min_experience: job.min_experience ?? 0, max_experience: job.max_experience ?? '', education_level: job.education_level ?? '', internship_policy: job.internship_policy ?? 'half', requirements: job.requirements.map(r => ({skill_name: r.skill_name, importance: r.importance, is_must_have: r.is_must_have})) }); setEditingJob(true); }}
               className="flex items-center gap-1 text-primary hover:underline font-medium"
             >
               <Pencil size={14} /> Edit Job
@@ -318,6 +318,44 @@ const JobDetail = () => {
                   <option value="closed">Closed</option>
                   <option value="draft">Draft</option>
                 </select>
+              </div>
+
+              {/* Experience & Education */}
+              <div className="border-t border-[rgba(73,69,79,0.15)] pt-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-on-surface-variant mb-3">Experience & Education</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Min Experience</label>
+                    <select className="input-field" value={editForm.min_experience ?? 0} onChange={e => setEditForm({...editForm, min_experience: parseInt(e.target.value)})}>
+                      {[...Array(16)].map((_, i) => <option key={i} value={i}>{i} Years</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Max Experience</label>
+                    <select className="input-field" value={editForm.max_experience ?? ''} onChange={e => setEditForm({...editForm, max_experience: e.target.value ? parseInt(e.target.value) : ''})}>
+                      <option value="">No Maximum</option>
+                      {[...Array(16)].map((_, i) => <option key={i} value={i}>{i} Years</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Education Level</label>
+                    <select className="input-field" value={editForm.education_level ?? ''} onChange={e => setEditForm({...editForm, education_level: e.target.value})}>
+                      <option value="">No requirement</option>
+                      <option value="any">Any degree</option>
+                      <option value="bachelors">Bachelor's degree</option>
+                      <option value="masters">Master's degree</option>
+                      <option value="phd">PhD</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Internship Policy</label>
+                    <select className="input-field" value={editForm.internship_policy ?? 'half'} onChange={e => setEditForm({...editForm, internship_policy: e.target.value})}>
+                      <option value="full">Count Full (1x)</option>
+                      <option value="half">Count Half (0.5x)</option>
+                      <option value="ignore">Ignore</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               {/* Skill requirements section */}
@@ -387,6 +425,10 @@ const JobDetail = () => {
                       location: editForm.location,
                       description: editForm.description,
                       status: editForm.status,
+                      min_experience: editForm.min_experience ?? 0,
+                      max_experience: editForm.max_experience === '' ? null : editForm.max_experience,
+                      education_level: editForm.education_level ?? '',
+                      internship_policy: editForm.internship_policy ?? 'half',
                       requirements: (editForm.requirements || []).filter(r => r.skill_name.trim()).map(r => ({
                         skill_name: r.skill_name,
                         importance: r.importance,

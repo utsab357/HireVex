@@ -109,14 +109,34 @@ class ATSEngine:
             return result
 
         # Non-resume content check (invoice, receipt, etc.)
-        for indicator in ATSEngine.NON_RESUME_INDICATORS:
-            if indicator in text_lower:
+        # SMART CHECK: Only reject if multiple non-resume indicators are found
+        # AND the document lacks standard resume section headers.
+        # This prevents false positives when a developer's resume mentions
+        # "invoice", "transaction history", etc. as part of project descriptions.
+        non_resume_hits = [ind for ind in ATSEngine.NON_RESUME_INDICATORS if ind in text_lower]
+
+        if non_resume_hits:
+            # Check if the document also has resume-like section headers
+            resume_section_count = 0
+            for section_keywords in ATSEngine.SECTION_KEYWORDS.values():
+                for keyword in section_keywords:
+                    # Use word boundary check: keyword at start of line or after whitespace
+                    pattern = r'(?:^|\n)\s*' + re.escape(keyword) + r'\s*(?:\n|:|\||-|$)'
+                    if re.search(pattern, text_lower):
+                        resume_section_count += 1
+                        break
+
+            # Only reject if: many non-resume indicators AND few resume sections
+            # A real invoice/receipt has 0-1 resume sections; a real resume has 2+
+            if len(non_resume_hits) >= 2 and resume_section_count < 2:
                 result['is_valid'] = False
                 result['stop_reason'] = (
-                    f'This file appears to be a "{indicator}" document, not a resume. '
+                    f'This file appears to be a non-resume document '
+                    f'(detected: {", ".join(non_resume_hits)}). '
                     'Please upload a valid resume.'
                 )
                 return result
+
 
         # Email detection
         email_match = re.search(r'[\w.-]+@[\w.-]+\.\w{2,}', text)
@@ -130,11 +150,21 @@ class ATSEngine:
         if not result['has_phone']:
             result['flags'].append('No phone number detected in resume.')
 
-        # Skill stuffing check (more than 40 distinct tech-like words in a short resume)
-        # Simple heuristic: if resume is short but mentions too many comma-separated items
-        if len(words) < 200:
-            comma_items = text.count(',')
-            if comma_items > 40:
+        # Skill stuffing check — improved heuristic
+        # Check 1: High comma-to-word ratio (regardless of resume length)
+        comma_items = text.count(',')
+        word_count = len(words)
+        if word_count > 0:
+            comma_ratio = comma_items / word_count
+            if comma_ratio > 0.20:  # More than 1 comma per 5 words
+                result['flags'].append(
+                    'Possible skill stuffing detected — unusually high density of '
+                    'comma-separated items relative to resume length.'
+                )
+
+        # Check 2: Short resume with many commas (original check, kept as additional guard)
+        if word_count < 200 and comma_items > 40:
+            if 'skill stuffing' not in ' '.join(result['flags']).lower():
                 result['flags'].append(
                     'Possible skill stuffing detected — large number of comma-separated items '
                     'in a short resume.'
@@ -201,6 +231,9 @@ class ATSEngine:
         """
         Extract text belonging to a specific section.
         Returns text from the section header to the next section header (or end of text).
+
+        GUARDRAIL: Sorts all section line indices to handle sections that
+        appear in non-standard order in the document.
         """
         if not sections[section_name]['found']:
             return ''
@@ -208,11 +241,12 @@ class ATSEngine:
         lines = text.split('\n')
         start = sections[section_name]['line_index']
 
-        # Find where next section starts
-        all_section_lines = []
-        for sname in ['skills', 'experience', 'education', 'projects', 'certifications']:
-            if sname != section_name and sections[sname]['found']:
-                all_section_lines.append(sections[sname]['line_index'])
+        # Collect ALL other section start lines and sort them
+        all_section_lines = sorted([
+            sections[sname]['line_index']
+            for sname in ['skills', 'experience', 'education', 'projects', 'certifications']
+            if sname != section_name and sections[sname]['found']
+        ])
 
         # Next section start (or end of document)
         next_starts = [l for l in all_section_lines if l > start]
@@ -506,10 +540,14 @@ class ATSEngine:
         return None
 
     @staticmethod
-    def _calculate_experience(text, job):
+    def _calculate_experience(text, job, sections=None):
         """
         Step 5: Parse date ranges from resume, calculate total experience.
         Handles overlapping dates, internship detection, and ambiguity.
+
+        GUARDRAIL: Prefers parsing from experience section only to avoid
+        false positives from phone numbers, IDs, and education dates.
+        Falls back to full text if no experience section detected.
 
         Returns: {
             'total_years': float,
@@ -524,7 +562,16 @@ class ATSEngine:
             'flags': list of strings,
         }
         """
-        text_lower = text.lower()
+        # GUARDRAIL: Parse dates from experience section first to avoid false positives
+        experience_text = ''
+        using_section_text = False
+        if sections and sections.get('experience', {}).get('found'):
+            experience_text = ATSEngine._get_section_text(text, sections, 'experience')
+            using_section_text = True
+
+        # Fall back to full text if no experience section found
+        search_text = experience_text if experience_text.strip() else text
+        text_lower = search_text.lower()
 
         # Date range patterns to find in text
         # Matches: "Jan 2020 - Dec 2022", "2019-2022", "06/2020 - present"
@@ -652,9 +699,10 @@ class ATSEngine:
                     if (current['end'][0], current['end'][1]) > (prev['end'][0], prev['end'][1]):
                         prev['end'] = current['end']
                         prev['months'] = (prev['end'][0] - prev['start'][0]) * 12 + (prev['end'][1] - prev['start'][1])
-                    # If either is internship, mark merged as internship
-                    if current['is_internship']:
-                        prev['is_internship'] = True
+                    # GUARDRAIL: Only mark merged range as internship if BOTH are internships.
+                    # If either range is full-time, the merged range stays full-time.
+                    if not current['is_internship']:
+                        prev['is_internship'] = False
                 else:
                     merged.append(current.copy())
 
@@ -702,30 +750,30 @@ class ATSEngine:
     def _score_experience(total_years, job):
         """
         Score experience against job min/max requirements.
-        Returns a bonus/penalty value.
+        Returns a 0-100 PERCENTAGE (not a bonus) for use in weighted scoring.
         """
         min_exp = getattr(job, 'min_experience', 0) or 0
         max_exp = getattr(job, 'max_experience', None)
 
         if min_exp == 0 and max_exp is None:
-            # No requirement set
-            return 0
+            # No requirement set — give neutral score
+            if total_years > 0:
+                return 70  # Has some experience, neutral-positive
+            return 50  # No requirement, no experience = neutral
 
         if total_years >= min_exp:
             if max_exp is None or total_years <= max_exp:
-                return 10  # Perfect match bonus
+                return 100  # Perfect match
             else:
-                # Overqualified — small flag, no penalty
-                return 5
+                # Overqualified — still good, slight reduction
+                overshoot = total_years - max_exp
+                return max(70, 100 - int(overshoot * 5))  # Gentle reduction
         else:
-            # Under-qualified
-            gap = min_exp - total_years
-            if gap >= 3:
-                return -20  # Way under
-            elif gap >= 1:
-                return -15  # Below minimum
-            else:
-                return -10  # Slightly under
+            # Under-qualified — proportional score
+            if min_exp > 0:
+                ratio = total_years / min_exp
+                return max(0, min(90, int(ratio * 100)))  # 0-90 range (never 100 if under)
+            return 50
 
     # ═══════════════════════════════════════════════════════════
     # STEP 6: Education Check
@@ -783,15 +831,16 @@ class ATSEngine:
         if not required:
             # No requirement, bonus if education detected
             if detected:
-                result['education_score'] = 3
+                result['education_score'] = 70  # Has education, neutral-positive
                 result['details'] = f'Education detected: {detected}. No formal requirement set.'
             else:
+                result['education_score'] = 50  # No requirement, no education = neutral
                 result['details'] = 'No education requirement set. No education section detected.'
             return result
 
         if detected is None:
             result['meets_requirement'] = False
-            result['education_score'] = -5
+            result['education_score'] = 10  # Very low but not zero
             result['details'] = f'Job requires {required} but no education detected in resume.'
             return result
 
@@ -800,11 +849,16 @@ class ATSEngine:
         required_rank = ATSEngine.EDUCATION_HIERARCHY.get(required, 0)
 
         if detected_rank >= required_rank:
-            result['education_score'] = 5
+            result['education_score'] = 100  # Meets or exceeds requirement
             result['details'] = f'Education requirement met: {detected} (required: {required}).'
         else:
             result['meets_requirement'] = False
-            result['education_score'] = -5
+            # Proportional score based on how close they are
+            if required_rank > 0:
+                ratio = detected_rank / required_rank
+                result['education_score'] = max(20, int(ratio * 100))
+            else:
+                result['education_score'] = 50
             result['details'] = f'Education gap: detected {detected}, but job requires {required}.'
 
         return result
@@ -814,45 +868,71 @@ class ATSEngine:
     # ═══════════════════════════════════════════════════════════
 
     @staticmethod
-    def _calculate_final_score(skill_result, experience_result, education_result, quality):
+    def _calculate_final_score(skill_result, experience_result, education_result, quality, job=None):
         """
-        Step 7: Calculate the final ATS score.
+        Step 7: Calculate the final ATS score using WEIGHTED COMPONENTS.
+
+        Default Weights:
+        - Skills:     60% (primary factor)
+        - Experience: 25%
+        - Education:  15%
 
         GUARDRAIL: Score Stability Caps:
         - If skill match < 20% → total score capped at 30 max
         - If skill match < 40% → total score capped at 50 max
-        - Bonuses (experience, education) can NOT push score beyond cap
         """
-        # Base score from skill matching
+        # Component 1: Skill match percentage (0-100)
         total_weight = skill_result['total_weight']
         earned_weight = skill_result['earned_weight']
 
         if total_weight > 0:
-            skill_match_pct = (earned_weight / total_weight) * 100
+            skill_pct = (earned_weight / total_weight) * 100
         else:
-            skill_match_pct = 50  # No requirements = neutral
+            skill_pct = 50  # No requirements = neutral
 
-        base_score = round(skill_match_pct)
+        # Component 2: Experience percentage (0-100, already calculated)
+        experience_pct = experience_result['experience_score']
 
-        # Add experience bonus/penalty
-        score = base_score + experience_result['experience_score']
+        # Component 3: Education percentage (0-100, already calculated)
+        education_pct = education_result['education_score']
 
-        # Add education bonus/penalty
-        score += education_result['education_score']
+        # Weighted combination — read from job config or use defaults
+        skill_weight = getattr(job, 'skill_weight', 0.60) if job else 0.60
+        experience_weight = getattr(job, 'experience_weight', 0.25) if job else 0.25
+        education_weight = getattr(job, 'education_weight', 0.15) if job else 0.15
 
-        # Quality bonuses/penalties
+        # GUARDRAIL: Normalize weights if they don't sum to ~1.0
+        total_w = skill_weight + experience_weight + education_weight
+        if total_w > 0 and abs(total_w - 1.0) > 0.1:
+            skill_weight /= total_w
+            experience_weight /= total_w
+            education_weight /= total_w
+
+        weighted_score = (
+            (skill_pct * skill_weight) +
+            (experience_pct * experience_weight) +
+            (education_pct * education_weight)
+        )
+
+        score = round(weighted_score)
+
+        # Quality penalties (still applied as deductions)
+        penalties = 0
         if not quality['has_email']:
-            score -= 5
+            penalties -= 5
         if quality.get('flags'):
             for flag in quality['flags']:
                 if 'skill stuffing' in flag.lower():
-                    score -= 5
+                    penalties -= 5
+                    break  # Only penalize once for stuffing
+
+        score += penalties
 
         # GUARDRAIL: Score stability caps
         if total_weight > 0:
-            if skill_match_pct < 20:
+            if skill_pct < 20:
                 score = min(score, 30)
-            elif skill_match_pct < 40:
+            elif skill_pct < 40:
                 score = min(score, 50)
 
         # Final cap 0-100
@@ -860,8 +940,16 @@ class ATSEngine:
 
         return {
             'score': score,
-            'skill_match_pct': round(skill_match_pct, 1),
-            'base_score': base_score,
+            'skill_match_pct': round(skill_pct, 1),
+            'experience_pct': round(experience_pct, 1),
+            'education_pct': round(education_pct, 1),
+            'base_score': round(weighted_score, 1),
+            'penalties': penalties,
+            'weights': {
+                'skill': skill_weight,
+                'experience': experience_weight,
+                'education': education_weight,
+            },
         }
 
     # ═══════════════════════════════════════════════════════════
@@ -1032,6 +1120,16 @@ class ATSEngine:
         if missing_musts:
             lines.append(f'CRITICAL: Must-have skill(s) missing: {", ".join(missing_musts)}.')
 
+        # Weighted score breakdown
+        exp_pct = final_score_data.get('experience_pct', 0)
+        edu_pct = final_score_data.get('education_pct', 0)
+        weights = final_score_data.get('weights', {})
+        lines.append(
+            f'Score breakdown: Skills {skill_pct:.0f}% (×{weights.get("skill", 0.60):.0f}), '
+            f'Experience {exp_pct:.0f}% (×{weights.get("experience", 0.25):.0f}), '
+            f'Education {edu_pct:.0f}% (×{weights.get("education", 0.15):.0f}).'
+        )
+
         # Experience summary
         for detail in experience_result['details']:
             lines.append(detail)
@@ -1125,7 +1223,296 @@ class ATSEngine:
         return weaknesses if weaknesses else ['No significant weaknesses identified.']
 
     # ═══════════════════════════════════════════════════════════
-    # MAIN EVALUATE — Full 12-Step Pipeline
+    # PHASE 4: SCORING INTELLIGENCE
+    # ═══════════════════════════════════════════════════════════
+
+    # --- Task 4.2: Role Relevance Scoring ---
+    @staticmethod
+    def _score_role_relevance(parsed_data, job):
+        """
+        Score how relevant candidate's past job titles are to the target role.
+        Uses title_data.py for group matching.
+
+        Returns: {
+            'score': int (0-100),
+            'target_group': str or None,
+            'details': list of str,
+        }
+        """
+        try:
+            from analysis.title_data import calculate_role_relevance
+        except ImportError:
+            return {'score': 50, 'target_group': None, 'details': ['Role relevance module not available.']}
+
+        # Extract titles from parsed work entries
+        work_entries = parsed_data.get('work_entries', [])
+        candidate_titles = [e.get('title', '') for e in work_entries if e.get('title')]
+
+        # Get target job title
+        target_title = getattr(job, 'title', '') or ''
+
+        return calculate_role_relevance(candidate_titles, target_title)
+
+    # --- Task 4.3: Skill Recency Scoring ---
+    @staticmethod
+    def _calculate_skill_recency(skill_result, parsed_data):
+        """
+        For each matched skill, check how recently it was used based on work entry dates.
+        Returns a recency multiplier map and overall recency score.
+
+        Recency tiers:
+        - Used in last 2 years: 1.0x
+        - Used 2-5 years ago: 0.8x
+        - Used 5+ years ago: 0.5x
+        - Section only (no date context): 0.7x
+        """
+        from datetime import datetime
+        current_year = datetime.now().year
+
+        work_entries = parsed_data.get('work_entries', [])
+        matched_skills = skill_result.get('matched', []) + skill_result.get('partial', [])
+
+        recency_map = {}
+        recency_details = []
+
+        for skill_info in matched_skills:
+            skill_name = skill_info.get('name', '').lower()
+            if not skill_name:
+                continue
+
+            # Find the most recent work entry that mentions this skill
+            most_recent_year = None
+            for entry in work_entries:
+                # Check if skill appears in entry bullets or raw text
+                entry_text = ' '.join(entry.get('bullets', [])) + ' ' + entry.get('raw_text', '')
+                if skill_name in entry_text.lower():
+                    end_date = entry.get('end_date')
+                    if end_date:
+                        entry_year = end_date[0]
+                        if most_recent_year is None or entry_year > most_recent_year:
+                            most_recent_year = entry_year
+
+            # Calculate recency multiplier
+            if most_recent_year is not None:
+                years_ago = current_year - most_recent_year
+                if years_ago <= 2:
+                    multiplier = 1.0
+                    tier = 'recent'
+                elif years_ago <= 5:
+                    multiplier = 0.8
+                    tier = 'moderate'
+                else:
+                    multiplier = 0.5
+                    tier = 'dated'
+                    recency_details.append(
+                        f'"{skill_info.get("name", skill_name)}" last used {years_ago} years ago.'
+                    )
+            else:
+                multiplier = 0.7  # Found in resume but no date context
+                tier = 'unknown'
+
+            recency_map[skill_name] = {
+                'multiplier': multiplier,
+                'tier': tier,
+                'last_used_year': most_recent_year,
+            }
+
+        # Calculate overall recency score (0-100)
+        if recency_map:
+            avg_multiplier = sum(r['multiplier'] for r in recency_map.values()) / len(recency_map)
+            recency_score = int(avg_multiplier * 100)
+        else:
+            recency_score = 50  # Neutral if no data
+
+        return {
+            'score': recency_score,
+            'skill_recency': recency_map,
+            'details': recency_details,
+        }
+
+    # --- Task 4.4: Knockout / Pre-Screening Filter ---
+    @staticmethod
+    def _pre_screen(candidate, job, experience_result, skill_result, education_result):
+        """
+        Pre-screening knockout filter. Checks hard requirements BEFORE scoring.
+        If knockout is triggered, the candidate is auto-rejected.
+
+        Returns: {
+            'passed': bool,
+            'knockout_reasons': list of str,
+        }
+        """
+        knockout_enabled = getattr(job, 'knockout_enabled', False)
+        if not knockout_enabled:
+            return {'passed': True, 'knockout_reasons': []}
+
+        reasons = []
+
+        # Check minimum experience
+        min_exp = getattr(job, 'min_experience', 0) or 0
+        if min_exp > 0:
+            candidate_years = experience_result.get('total_years', 0)
+            if candidate_years < min_exp:
+                reasons.append(
+                    f'Minimum {min_exp} years experience required, '
+                    f'candidate has {candidate_years} years.'
+                )
+
+        # Check must-have skills (if ALL must-haves are missing → knockout)
+        missing_must_haves = [m['name'] for m in skill_result.get('missing', []) if m.get('is_must_have')]
+        total_must_haves = sum(1 for r in job.requirements.all() if r.is_must_have)
+        if total_must_haves > 0 and len(missing_must_haves) == total_must_haves:
+            reasons.append(
+                f'None of the must-have skills found: {", ".join(missing_must_haves)}.'
+            )
+
+        # Check education requirement (only knockout if explicitly required)
+        required_edu = getattr(job, 'education_level', '') or ''
+        if required_edu and required_edu != 'any':
+            if not education_result.get('meets_requirement', True):
+                if education_result.get('detected_level') is None:
+                    reasons.append(
+                        f'Required education level ({required_edu}) not detected in resume.'
+                    )
+
+        return {
+            'passed': len(reasons) == 0,
+            'knockout_reasons': reasons,
+        }
+
+    # --- Task 4.5: Employment Gap Detection ---
+    @staticmethod
+    def _detect_employment_gaps(parsed_data):
+        """
+        Detect gaps > 6 months between consecutive work entries.
+        Information only — not used as a score penalty.
+
+        Returns: list of {
+            'gap_months': int,
+            'between': str,  # "Role A → Role B"
+            'start_year': int,
+            'end_year': int,
+        }
+        """
+        work_entries = parsed_data.get('work_entries', [])
+
+        # Filter entries with valid dates and sort by end date
+        dated_entries = [
+            e for e in work_entries
+            if e.get('start_date') and e.get('end_date')
+        ]
+        if len(dated_entries) < 2:
+            return []
+
+        # Sort by start date
+        dated_entries.sort(key=lambda e: (e['start_date'][0], e['start_date'][1]))
+
+        gaps = []
+        for i in range(len(dated_entries) - 1):
+            current_end = dated_entries[i]['end_date']
+            next_start = dated_entries[i + 1]['start_date']
+
+            # Calculate gap in months
+            gap_months = (next_start[0] - current_end[0]) * 12 + (next_start[1] - current_end[1])
+
+            if gap_months > 6:  # Only flag gaps > 6 months
+                current_title = dated_entries[i].get('title', 'Unknown role')
+                next_title = dated_entries[i + 1].get('title', 'Unknown role')
+                gaps.append({
+                    'gap_months': gap_months,
+                    'between': f'{current_title} → {next_title}',
+                    'start_year': current_end[0],
+                    'end_year': next_start[0],
+                })
+
+        return gaps
+
+    # --- Task 4.6: Job Hopping Detection ---
+    @staticmethod
+    def _detect_job_hopping(parsed_data):
+        """
+        Detect candidates with short tenures (< 12 months) at multiple roles.
+        Information only — not a score penalty.
+
+        Returns: {
+            'short_tenure_count': int,
+            'is_job_hopper': bool (3+ short tenures in last 5 years),
+            'details': list of str,
+        }
+        """
+        from datetime import datetime
+        current_year = datetime.now().year
+        cutoff_year = current_year - 5
+
+        work_entries = parsed_data.get('work_entries', [])
+
+        short_tenures = []
+        for entry in work_entries:
+            if entry.get('is_internship'):
+                continue  # Don't count internships
+
+            months = entry.get('months', 0)
+            end_date = entry.get('end_date')
+
+            # Only count recent roles (last 5 years)
+            if end_date and end_date[0] >= cutoff_year:
+                if 0 < months < 12:
+                    title = entry.get('title', 'Unknown role')
+                    short_tenures.append(f'{title} ({months} months)')
+
+        is_hopper = len(short_tenures) >= 3
+
+        details = []
+        if is_hopper:
+            details.append(
+                f'Frequent role changes detected: {len(short_tenures)} roles with '
+                f'< 12 months tenure in the last 5 years.'
+            )
+
+        return {
+            'short_tenure_count': len(short_tenures),
+            'is_job_hopper': is_hopper,
+            'short_roles': short_tenures,
+            'details': details,
+        }
+
+    # --- Task 4.7: Certification Matching ---
+    @staticmethod
+    def _match_certifications(parsed_data, job):
+        """
+        Match detected certifications against job requirements that are certification-type.
+        Also provides general cert info for non-cert-required jobs.
+
+        Returns: {
+            'detected': list of cert names,
+            'matched': list (certs that match requirements),
+            'score_bonus': int (0-10),
+            'details': list of str,
+        }
+        """
+        certs = parsed_data.get('certifications', [])
+        detected_names = [c.get('name', '') for c in certs]
+
+        result = {
+            'detected': detected_names,
+            'matched': [],
+            'score_bonus': 0,
+            'details': [],
+        }
+
+        if detected_names:
+            result['details'].append(
+                f'Certifications detected: {", ".join(detected_names)}.'
+            )
+            # Small bonus for having any relevant certifications
+            result['score_bonus'] = min(5, len(detected_names) * 2)
+        else:
+            result['details'].append('No certifications detected in resume.')
+
+        return result
+
+    # ═══════════════════════════════════════════════════════════
+    # MAIN EVALUATE — Full Pipeline (Extended)
     # ═══════════════════════════════════════════════════════════
 
     @staticmethod
@@ -1163,20 +1550,125 @@ class ATSEngine:
         # STEP 2: Section Detection
         sections = ATSEngine._detect_sections(resume_text)
 
+        # STEP 2.5: Structured Data Extraction (Phase 3)
+        parsed_data = {}
+        try:
+            from analysis.resume_parser import parse_resume_structured
+            parsed_data = parse_resume_structured(resume_text, sections)
+        except Exception as e:
+            parsed_data = {
+                'work_entries': [],
+                'education_entries': [],
+                'certifications': [],
+                'work_entry_count': 0,
+                'total_work_months': 0,
+                'has_structured_data': False,
+                'parse_error': str(e),
+            }
+
         # STEP 3+4: Skill Matching + Depth
         requirements = list(job.requirements.all())
         skill_result = ATSEngine._match_skills(resume_text, sections, requirements)
 
-        # STEP 5: Experience Calculation
-        experience_result = ATSEngine._calculate_experience(resume_text, job)
+        # STEP 5: Experience Calculation (now section-aware to avoid false positives)
+        experience_result = ATSEngine._calculate_experience(resume_text, job, sections)
 
         # STEP 6: Education Check
         education_result = ATSEngine._check_education(resume_text, job)
 
-        # STEP 7: Final Score
-        final_score_data = ATSEngine._calculate_final_score(
-            skill_result, experience_result, education_result, quality
+        # PHASE 4 — STEP 6.5: Knockout Pre-Screening
+        knockout = ATSEngine._pre_screen(
+            candidate, job, experience_result, skill_result, education_result
         )
+        if not knockout['passed']:
+            return {
+                'overall_score': 0,
+                'explanation': 'Candidate did not meet minimum requirements. ' + ' '.join(knockout['knockout_reasons']),
+                'strengths': [],
+                'weaknesses': knockout['knockout_reasons'],
+                'interview_questions': [],
+                'confidence': 'high',
+                'confidence_reasons': ['Auto-rejected by knockout filter.'],
+                'needs_review': False,
+                'review_reason': 'Auto-rejected: does not meet minimum requirements.',
+                'score_breakdown': {'knockout': True, 'knockout_reasons': knockout['knockout_reasons']},
+                'parsed_data': parsed_data,
+                'role_relevance': {},
+                'skill_recency': {},
+                'employment_gaps': [],
+                'job_hopping': {},
+                'certifications_matched': {},
+            }
+
+        # PHASE 4 — STEP 6.6: Role Relevance Scoring
+        role_relevance = ATSEngine._score_role_relevance(parsed_data, job)
+
+        # PHASE 4 — STEP 6.7: Skill Recency Scoring
+        skill_recency = ATSEngine._calculate_skill_recency(skill_result, parsed_data)
+
+        # PHASE 4 — STEP 6.8: Employment Gap Detection
+        employment_gaps = ATSEngine._detect_employment_gaps(parsed_data)
+
+        # PHASE 4 — STEP 6.9: Job Hopping Detection
+        job_hopping = ATSEngine._detect_job_hopping(parsed_data)
+
+        # PHASE 4 — STEP 6.10: Certification Matching
+        cert_result = ATSEngine._match_certifications(parsed_data, job)
+
+        # STEP 7: Final Score (now includes cert bonus)
+        final_score_data = ATSEngine._calculate_final_score(
+            skill_result, experience_result, education_result, quality, job
+        )
+        # Apply certification bonus on top
+        if cert_result['score_bonus'] > 0:
+            final_score_data['score'] = min(100, final_score_data['score'] + cert_result['score_bonus'])
+            final_score_data['cert_bonus'] = cert_result['score_bonus']
+
+        # Inject Phase 4 data into score breakdown
+        final_score_data['role_relevance_pct'] = role_relevance.get('score', 50)
+        final_score_data['recency_pct'] = skill_recency.get('score', 50)
+
+        # PHASE 7 — Teach-Time Estimation
+        teach_time_data = []
+        try:
+            from analysis.teach_time import estimate_teach_time
+            matched_names = [m.get('name', '') for m in skill_result.get('matched', [])]
+            teach_time_data = estimate_teach_time(
+                skill_result.get('missing', []),
+                matched_names
+            )
+        except Exception:
+            teach_time_data = []
+
+        # PHASE 7 — Requirement Coverage Map (per-requirement breakdown)
+        requirement_coverage = []
+        for m in skill_result.get('matched', []):
+            recency_info = skill_recency.get('skill_recency', {}).get(m.get('name', '').lower(), {})
+            requirement_coverage.append({
+                'skill': m.get('name', ''),
+                'status': 'matched',
+                'match_type': 'direct',
+                'is_must_have': m.get('is_must_have', False),
+                'recency': recency_info.get('tier', 'unknown'),
+            })
+        for p in skill_result.get('partial', []):
+            requirement_coverage.append({
+                'skill': p.get('name', ''),
+                'status': 'partial',
+                'match_type': 'group',
+                'matched_via': p.get('matched_via', ''),
+                'is_must_have': p.get('is_must_have', False),
+                'credit': 0.3,
+            })
+        for ms in skill_result.get('missing', []):
+            tt = next((t for t in teach_time_data if t['skill'] == ms.get('name', '')), None)
+            requirement_coverage.append({
+                'skill': ms.get('name', ''),
+                'status': 'missing',
+                'is_must_have': ms.get('is_must_have', False),
+                'teach_time': f'{tt["estimated_weeks"]} weeks' if tt else 'unknown',
+                'effort_level': tt['effort_level'] if tt else 'unknown',
+            })
 
         # STEP 8: Confidence
         confidence = ATSEngine._calculate_confidence(
@@ -1192,16 +1684,73 @@ class ATSEngine:
         explanation = ATSEngine._build_explanation(
             final_score_data, skill_result, experience_result, education_result, confidence
         )
+        # Append Phase 4 details to explanation
+        phase4_notes = []
+        for detail in role_relevance.get('details', []):
+            phase4_notes.append(detail)
+        for detail in skill_recency.get('details', []):
+            phase4_notes.append(detail)
+        for gap in employment_gaps:
+            phase4_notes.append(f'Employment gap: {gap["gap_months"]} months ({gap["between"]}).')
+        for detail in job_hopping.get('details', []):
+            phase4_notes.append(detail)
+        for detail in cert_result.get('details', []):
+            phase4_notes.append(detail)
+        if phase4_notes:
+            explanation += ' ' + ' '.join(phase4_notes)
 
         # STEP 11: Strengths
         strengths = ATSEngine._build_strengths(
             skill_result, experience_result, education_result, quality, sections
         )
+        # Add Phase 4 strengths
+        if role_relevance.get('score', 0) >= 70:
+            strengths.append('Past roles are directly relevant to this position.')
+        if skill_recency.get('score', 0) >= 80:
+            strengths.append('Skills are recently used and current.')
+        if cert_result.get('detected'):
+            strengths.append(f'Has relevant certifications: {", ".join(cert_result["detected"][:3])}.')
 
         # STEP 12: Weaknesses
         weaknesses = ATSEngine._build_weaknesses(
             skill_result, experience_result, education_result, quality, sections
         )
+        # Add Phase 4 weaknesses
+        if role_relevance.get('score', 50) < 30:
+            weaknesses.append('Past roles are not closely related to this position.')
+        if skill_recency.get('score', 50) < 50:
+            weaknesses.append('Some key skills appear to be dated (not used recently).')
+        for gap in employment_gaps:
+            weaknesses.append(f'Employment gap of {gap["gap_months"]} months detected.')
+        if job_hopping.get('is_job_hopper'):
+            weaknesses.append('Frequent role changes detected (3+ roles with < 12 months tenure).')
+
+        # PHASE 5 — STEP 13: Red Flags Collection
+        red_flags = []
+        try:
+            from analysis.red_flags import collect_red_flags
+            red_flags = collect_red_flags(
+                quality=quality,
+                sections=sections,
+                skill_result=skill_result,
+                experience_result=experience_result,
+                education_result=education_result,
+                final_score_data=final_score_data,
+                parsed_data=parsed_data,
+                role_relevance=role_relevance,
+                skill_recency=skill_recency,
+                employment_gaps=employment_gaps,
+                job_hopping=job_hopping,
+                cert_result=cert_result,
+            )
+        except Exception:
+            red_flags = []
+
+        # GUARDRAIL: Critical red flags auto-trigger review
+        critical_flags = [f for f in red_flags if f.get('severity') == 'critical']
+        if critical_flags and not review['needs_review']:
+            review['needs_review'] = True
+            review['review_reason'] = 'Critical red flag(s) detected: ' + critical_flags[0]['message']
 
         return {
             'overall_score': final_score_data['score'],
@@ -1213,5 +1762,14 @@ class ATSEngine:
             'confidence_reasons': confidence['reasons'],
             'needs_review': review['needs_review'],
             'review_reason': review['review_reason'],
+            'score_breakdown': final_score_data,
+            'parsed_data': parsed_data,
+            'role_relevance': role_relevance,
+            'skill_recency': skill_recency,
+            'employment_gaps': employment_gaps,
+            'job_hopping': job_hopping,
+            'certifications_matched': cert_result,
+            'red_flags': red_flags,
+            'teach_time': teach_time_data,
+            'requirement_coverage': requirement_coverage,
         }
-
