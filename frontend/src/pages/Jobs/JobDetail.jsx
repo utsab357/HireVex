@@ -130,7 +130,7 @@ const JobDetail = () => {
   };
 
   const handleScanAll = async () => {
-    const unscanned = candidates.filter(c => c.ai_score === null || c.ai_score === undefined);
+    const unscanned = candidates.filter(c => c.ats_score === null || c.ats_score === undefined);
     if (unscanned.length === 0) return;
     setScanAllRunning(true);
     for (const cand of unscanned) {
@@ -151,7 +151,7 @@ const JobDetail = () => {
   };
 
   const sortedCandidates = [...candidates].sort((a, b) => {
-    if (sortBy === 'score') return (b.ai_score ?? -1) - (a.ai_score ?? -1);
+    if (sortBy === 'score') return (b.ats_score ?? -1) - (a.ats_score ?? -1);
     if (sortBy === 'name') return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
     if (sortBy === 'date') return new Date(b.created_at) - new Date(a.created_at);
     return 0;
@@ -166,8 +166,8 @@ const JobDetail = () => {
         if (cand.id === candidateId) {
           return {
             ...cand,
-            ai_score: res.data.overall_score,
-            ai_explanation: res.data.explanation,
+            ats_score: res.data.overall_score,
+            ats_explanation: res.data.explanation,
             status: 'review'
           };
         }
@@ -186,14 +186,14 @@ const JobDetail = () => {
 
   // === EXPORT CSV ===
   const handleExportCSV = () => {
-    const scored = candidates.filter(c => c.ai_score !== null && c.ai_score !== undefined);
+    const scored = candidates.filter(c => c.ats_score !== null && c.ats_score !== undefined);
     if (scored.length === 0) { alert('No scored candidates to export.'); return; }
     const headers = ['Name', 'Email', 'Phone', 'Score', 'Status', 'Date'];
     const rows = scored.map(c => [
       `${c.first_name} ${c.last_name}`,
       c.email,
       c.phone || '',
-      c.ai_score,
+      c.ats_score,
       c.status,
       new Date(c.created_at).toLocaleDateString()
     ]);
@@ -207,7 +207,7 @@ const JobDetail = () => {
 
   // === ANALYTICS DATA ===
   const getAnalytics = () => {
-    const scored = candidates.filter(c => c.ai_score !== null && c.ai_score !== undefined);
+    const scored = candidates.filter(c => c.ats_score !== null && c.ats_score !== undefined);
     const ranges = [
       { label: '90-100', min: 90, max: 100, color: '#22c55e' },
       { label: '70-89', min: 70, max: 89, color: '#a3e635' },
@@ -217,9 +217,9 @@ const JobDetail = () => {
     ];
     const distribution = ranges.map(r => ({
       ...r,
-      count: scored.filter(c => c.ai_score >= r.min && c.ai_score <= r.max).length
+      count: scored.filter(c => c.ats_score >= r.min && c.ats_score <= r.max).length
     }));
-    const avg = scored.length ? Math.round(scored.reduce((s, c) => s + c.ai_score, 0) / scored.length) : 0;
+    const avg = scored.length ? Math.round(scored.reduce((s, c) => s + c.ats_score, 0) / scored.length) : 0;
     const statuses = {};
     candidates.forEach(c => { statuses[c.status] = (statuses[c.status] || 0) + 1; });
     return { distribution, avg, total: scored.length, statuses };
@@ -458,13 +458,13 @@ const JobDetail = () => {
                 Talent Pool <span className="bg-surface-container-highest text-on-surface-variant text-xs px-2 py-0.5 rounded-full">{candidates.length}</span>
               </h2>
               <div className="flex items-center gap-2">
-                {candidates.some(c => c.ai_score === null || c.ai_score === undefined) && (
+                {candidates.some(c => c.ats_score === null || c.ats_score === undefined) && (
                   <button onClick={handleScanAll} disabled={scanAllRunning} className="btn-secondary py-1 px-3 text-xs flex items-center gap-1.5">
                     <Zap size={12} />
                     {scanAllRunning ? 'Scanning...' : 'Scan All'}
                   </button>
                 )}
-                {candidates.some(c => c.ai_score !== null && c.ai_score !== undefined) && (
+                {candidates.some(c => c.ats_score !== null && c.ats_score !== undefined) && (
                   <button onClick={handleRescanAll} disabled={scanAllRunning} className="btn-secondary py-1 px-3 text-xs flex items-center gap-1.5">
                     <Sparkles size={12} />
                     {scanAllRunning ? 'Rescanning...' : 'Rescan All'}
@@ -520,10 +520,10 @@ const JobDetail = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-6">
-                      {cand.ai_score !== null && cand.ai_score !== undefined ? (
+                      {cand.ats_score !== null && cand.ats_score !== undefined ? (
                         <div className="flex items-center gap-2">
                            <div className="cursor-pointer hover:scale-105 transition-transform" onClick={() => window.location.href=`/candidates/${cand.id}`}>
-                             <ScoreRing score={cand.ai_score} size={40} strokeWidth={4} />
+                             <ScoreRing score={cand.ats_score} size={40} strokeWidth={4} />
                            </div>
                            <button 
                              onClick={() => handleAnalyze(cand.id)}

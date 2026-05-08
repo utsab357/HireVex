@@ -52,8 +52,8 @@ class AIEvaluationViewSet(viewsets.ModelViewSet):
             pass  # Non-critical — don't fail evaluation over this
         
         # Update Candidate with core score for list views
-        candidate.ai_score = result['overall_score']
-        candidate.ai_explanation = result['explanation']
+        candidate.ats_score = result['overall_score']
+        candidate.ats_explanation = result['explanation']
         candidate.status = 'review' # Move to review automatically after parsing
         candidate.save()
         

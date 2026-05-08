@@ -26,9 +26,9 @@ const Analytics = () => {
 
   if (loading) return <div className="p-8">Loading analytics...</div>;
 
-  const scored = candidates.filter(c => c.ai_score !== null && c.ai_score !== undefined);
-  const avg = scored.length ? Math.round(scored.reduce((s, c) => s + c.ai_score, 0) / scored.length) : 0;
-  const topCandidates = [...scored].sort((a, b) => b.ai_score - a.ai_score).slice(0, 10);
+  const scored = candidates.filter(c => c.ats_score !== null && c.ats_score !== undefined);
+  const avg = scored.length ? Math.round(scored.reduce((s, c) => s + c.ats_score, 0) / scored.length) : 0;
+  const topCandidates = [...scored].sort((a, b) => b.ats_score - a.ats_score).slice(0, 10);
 
   const ranges = [
     { label: '90-100', min: 90, max: 100, color: '#22c55e', bg: 'bg-[#22c55e]' },
@@ -39,7 +39,7 @@ const Analytics = () => {
   ];
   const distribution = ranges.map(r => ({
     ...r,
-    count: scored.filter(c => c.ai_score >= r.min && c.ai_score <= r.max).length
+    count: scored.filter(c => c.ats_score >= r.min && c.ats_score <= r.max).length
   }));
   const maxCount = Math.max(...distribution.map(d => d.count), 1);
 
@@ -53,8 +53,8 @@ const Analytics = () => {
   // Per-job stats
   const jobStats = jobs.map(job => {
     const jobCands = candidates.filter(c => c.job === job.id);
-    const jobScored = jobCands.filter(c => c.ai_score != null);
-    const jobAvg = jobScored.length ? Math.round(jobScored.reduce((s, c) => s + c.ai_score, 0) / jobScored.length) : 0;
+    const jobScored = jobCands.filter(c => c.ats_score != null);
+    const jobAvg = jobScored.length ? Math.round(jobScored.reduce((s, c) => s + c.ats_score, 0) / jobScored.length) : 0;
     return { ...job, total: jobCands.length, scored: jobScored.length, avg: jobAvg };
   });
 
@@ -150,7 +150,7 @@ const Analytics = () => {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{c.first_name} {c.last_name}</p>
                 </div>
-                <ScoreRing score={c.ai_score} size={28} strokeWidth={3} />
+                <ScoreRing score={c.ats_score} size={28} strokeWidth={3} />
               </Link>
             ))}
           </div>

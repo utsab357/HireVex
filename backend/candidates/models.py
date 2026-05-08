@@ -22,8 +22,8 @@ class Candidate(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
     
     # Phase 3 Fields (Setup now to avoid migration issues later)
-    ai_score = models.IntegerField(null=True, blank=True)
-    ai_explanation = models.TextField(null=True, blank=True)
+    ats_score = models.IntegerField(null=True, blank=True, db_column='ai_score')
+    ats_explanation = models.TextField(null=True, blank=True, db_column='ai_explanation')
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

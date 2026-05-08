@@ -227,9 +227,9 @@ const Pipeline = () => {
                        <Link to={`/candidates/${cand.id}`} className="font-bold text-on-surface hover:text-primary transition-colors block leading-tight">
                          {cand.first_name} {cand.last_name}
                        </Link>
-                       {cand.ai_score && (
+                       {cand.ats_score && (
                          <div className="flex-shrink-0 scale-75 origin-top-right -mt-1 -mr-1">
-                           <ScoreRing score={cand.ai_score} size={40} strokeWidth={5} />
+                           <ScoreRing score={cand.ats_score} size={40} strokeWidth={5} />
                          </div>
                        )}
                     </div>

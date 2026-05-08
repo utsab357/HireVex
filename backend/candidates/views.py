@@ -29,9 +29,9 @@ class CandidateViewSet(viewsets.ModelViewSet):
         tag = self.request.query_params.get('tag')
 
         if min_score:
-            queryset = queryset.filter(ai_score__gte=int(min_score))
+            queryset = queryset.filter(ats_score__gte=int(min_score))
         if max_score:
-            queryset = queryset.filter(ai_score__lte=int(max_score))
+            queryset = queryset.filter(ats_score__lte=int(max_score))
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         if confidence:
@@ -42,7 +42,7 @@ class CandidateViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(candidate_tags__tag__name__iexact=tag)
 
         # Order by score descending by default, then by created_at
-        queryset = queryset.order_by('-ai_score', '-created_at')
+        queryset = queryset.order_by('-ats_score', '-created_at')
 
         # Task 8.5: Top N / Top Percentage — ONLY apply on list views
         # Slicing a queryset makes it a list → breaks detail views (get_object, update, etc.)
@@ -72,7 +72,7 @@ class CandidateViewSet(viewsets.ModelViewSet):
         candidate.save()
 
         # Phase 9: Log feedback for scoring insights (DISPLAY ONLY — does NOT change scoring)
-        if new_status in ('shortlisted', 'rejected') and candidate.ai_score is not None:
+        if new_status in ('shortlisted', 'rejected') and candidate.ats_score is not None:
             self._log_scoring_feedback(candidate, new_status)
 
         return Response({'status': new_status})
@@ -82,7 +82,7 @@ class CandidateViewSet(viewsets.ModelViewSet):
         """Track HR decisions by score range for insight display."""
         from analysis.models import ScoringFeedback
 
-        score = candidate.ai_score
+        score = candidate.ats_score
         # Determine score range bucket
         if score <= 20:
             bucket = '0-20'
@@ -148,7 +148,7 @@ class CandidateViewSet(viewsets.ModelViewSet):
 
             matching_ids.append(candidate.id)
 
-        results = Candidate.objects.filter(id__in=matching_ids).order_by('-ai_score')
+        results = Candidate.objects.filter(id__in=matching_ids).order_by('-ats_score')
         serializer = CandidateSerializer(results, many=True)
         return Response({
             'count': len(matching_ids),

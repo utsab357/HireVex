@@ -18,7 +18,7 @@ const Compare = () => {
   useEffect(() => {
     if (selectedJob) {
       api.get(`candidates/?job_id=${selectedJob}`).then(res => {
-        setCandidates(res.data.filter(c => c.ai_score != null));
+        setCandidates(res.data.filter(c => c.ats_score != null));
         setCompareIds([]);
         setCompareData([]);
       });
@@ -111,7 +111,7 @@ const Compare = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{c.first_name} {c.last_name}</p>
-                    <p className="text-[10px] text-on-surface-variant">Score: {c.ai_score}</p>
+                    <p className="text-[10px] text-on-surface-variant">Score: {c.ats_score}</p>
                   </div>
                   {compareIds.includes(c.id) && (
                     <div className="w-5 h-5 rounded-full bg-primary text-on-primary flex items-center justify-center text-[10px] font-bold">
