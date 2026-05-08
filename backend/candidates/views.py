@@ -77,6 +77,36 @@ class CandidateViewSet(viewsets.ModelViewSet):
 
         return Response({'status': new_status})
 
+    @action(detail=True, methods=['post'], url_path='swap')
+    def swap_pool(self, request, pk=None):
+        """
+        POST /api/candidates/<id>/swap/
+        Swap a duplicate candidate with the active one.
+        The duplicate becomes active, the old active becomes duplicate.
+        """
+        dup = self.get_object()
+        if dup.pool != 'duplicate':
+            return Response({'error': 'Only duplicate candidates can be swapped.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Find the currently active candidate with the same email + job
+        active = Candidate.objects.filter(
+            job=dup.job, email=dup.email, pool='active'
+        ).first()
+
+        if active:
+            active.pool = 'duplicate'
+            active.save()
+
+        dup.pool = 'active'
+        dup.save()
+
+        return Response({
+            'message': f'{dup.first_name} {dup.last_name} moved to Talent Pool.',
+            'swapped_id': str(active.id) if active else None,
+            'activated_id': str(dup.id),
+        })
+
     @staticmethod
     def _log_scoring_feedback(candidate, action):
         """Track HR decisions by score range for insight display."""
@@ -216,19 +246,33 @@ class ResumeUploadViewSet(viewsets.ViewSet):
         email = request.data.get('email') or extracted['email']
         phone = request.data.get('phone') or extracted['phone']
 
-        # Task 8.1: Duplicate Detection
-        existing = Candidate.objects.filter(job=job, email=email).first()
+        # Task 8.1: Duplicate Detection → Duplicate Pool
+        # If a candidate with the same email already exists in the ACTIVE pool,
+        # create a new entry in the DUPLICATE pool so HR can compare and swap.
+        existing = Candidate.objects.filter(job=job, email=email, pool='active').first()
         if existing and email != 'unknown@example.com':
+            # Create the duplicate candidate
+            dup_candidate = Candidate.objects.create(
+                job=job,
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                phone=phone,
+                pool='duplicate',
+            )
+            Resume.objects.create(
+                candidate=dup_candidate,
+                file=file_obj,
+                parsed_text=parsed_text
+            )
+            serializer = CandidateSerializer(dup_candidate)
             return Response(
-                {
-                    'error': 'Duplicate candidate',
-                    'message': f'A candidate with email {email} already exists for this job.',
-                    'existing_candidate_id': str(existing.id),
-                },
-                status=status.HTTP_409_CONFLICT
+                {**serializer.data, 'is_duplicate': True,
+                 'message': f'{first_name} {last_name} already exists. CV added to Duplicate section for review.'},
+                status=status.HTTP_200_OK
             )
 
-        # 3. Create candidate
+        # 3. Create candidate (new)
         candidate = Candidate.objects.create(
             job=job,
             first_name=first_name,

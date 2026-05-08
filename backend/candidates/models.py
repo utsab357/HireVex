@@ -13,6 +13,11 @@ class Candidate(models.Model):
         ('rejected', 'Rejected'),
     ]
 
+    POOL_CHOICES = [
+        ('active', 'Active'),
+        ('duplicate', 'Duplicate'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='candidates')
     first_name = models.CharField(max_length=150)
@@ -20,6 +25,7 @@ class Candidate(models.Model):
     email = models.EmailField()
     phone = models.CharField(max_length=50, blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
+    pool = models.CharField(max_length=10, choices=POOL_CHOICES, default='active')
     
     # Phase 3 Fields (Setup now to avoid migration issues later)
     ats_score = models.IntegerField(null=True, blank=True, db_column='ai_score')

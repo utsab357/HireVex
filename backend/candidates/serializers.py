@@ -12,5 +12,5 @@ class CandidateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Candidate
-        fields = ('id', 'job', 'first_name', 'last_name', 'email', 'phone', 'status', 'ats_score', 'ats_explanation', 'created_at', 'resume')
+        fields = ('id', 'job', 'first_name', 'last_name', 'email', 'phone', 'status', 'pool', 'ats_score', 'ats_explanation', 'created_at', 'resume')
         read_only_fields = ('id', 'created_at', 'ats_score', 'ats_explanation')

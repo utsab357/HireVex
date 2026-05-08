@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Building2, MapPin, ArrowLeft, Upload, FileText, UserPlus, Sparkles, AlertTriangle, ArrowDownAZ, ArrowDown01, Clock, Zap, Pencil, Download, BarChart3, GitCompare, X } from 'lucide-react';
+import { Building2, MapPin, ArrowLeft, Upload, FileText, UserPlus, Sparkles, AlertTriangle, ArrowDownAZ, ArrowDown01, Clock, Zap, Pencil, Download, BarChart3, GitCompare, X, ArrowRightLeft, Copy } from 'lucide-react';
 import api from '../../api/client';
 import ScoreRing from '../../components/shared/ScoreRing';
 
@@ -106,25 +106,37 @@ const JobDetail = () => {
     }
 
     setUploading(true);
-    const results = [];
+    const newCount = { added: 0, duplicates: 0 };
+    const errors = [];
 
     for (let i = 0; i < validFiles.length; i++) {
       setBulkProgress({ current: i + 1, total: validFiles.length });
       const formData = new FormData();
       formData.append('file', validFiles[i]);
       formData.append('job_id', id);
-      // Name extraction happens server-side (Phase 5)
       try {
         const res = await api.post('candidates/upload/', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
-        results.push(res.data);
+        if (res.data.is_duplicate) {
+          newCount.duplicates++;
+        } else {
+          newCount.added++;
+        }
       } catch (err) {
+        const msg = err.response?.data?.message || err.response?.data?.error || 'Upload failed';
+        errors.push(`${validFiles[i].name}: ${msg}`);
         console.error(`Upload failed for ${validFiles[i].name}`, err);
       }
     }
 
-    setCandidates(prev => [...results, ...prev]);
+    // Refresh full candidate list to keep pools in sync
+    await fetchCandidates();
+
+    // Only show alert for actual errors, duplicates silently go to Duplicate CVs section
+    if (errors.length > 0) {
+      alert(`Upload failed:\n${errors.join('\n')}`);
+    }
     setUploading(false);
     setBulkProgress(null);
   };
@@ -150,12 +162,28 @@ const JobDetail = () => {
     await fetchCandidates();
   };
 
-  const sortedCandidates = [...candidates].sort((a, b) => {
+  // Split candidates into Active and Duplicate pools
+  const activeCandidates = candidates.filter(c => c.pool !== 'duplicate');
+  const duplicateCandidates = candidates.filter(c => c.pool === 'duplicate');
+
+  const sortFn = (a, b) => {
     if (sortBy === 'score') return (b.ats_score ?? -1) - (a.ats_score ?? -1);
     if (sortBy === 'name') return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
     if (sortBy === 'date') return new Date(b.created_at) - new Date(a.created_at);
     return 0;
-  });
+  };
+  const sortedCandidates = [...activeCandidates].sort(sortFn);
+  const sortedDuplicates = [...duplicateCandidates].sort(sortFn);
+
+  const handleSwap = async (duplicateId) => {
+    try {
+      await api.post(`candidates/${duplicateId}/swap/`);
+      await fetchCandidates();
+    } catch (err) {
+      console.error('Swap failed', err);
+      alert('Swap failed: ' + (err.response?.data?.error || 'Unknown error'));
+    }
+  };
 
   const handleAnalyze = async (candidateId) => {
     setAnalyzingIds(prev => new Set(prev).add(candidateId));
@@ -455,16 +483,16 @@ const JobDetail = () => {
             <div className="flex justify-between items-center mb-2">
               <h2 className="font-semibold text-lg flex items-center gap-2">
                 <UserPlus size={18} className="text-primary" />
-                Talent Pool <span className="bg-surface-container-highest text-on-surface-variant text-xs px-2 py-0.5 rounded-full">{candidates.length}</span>
+                Talent Pool <span className="bg-surface-container-highest text-on-surface-variant text-xs px-2 py-0.5 rounded-full">{activeCandidates.length}</span>
               </h2>
               <div className="flex items-center gap-2">
-                {candidates.some(c => c.ats_score === null || c.ats_score === undefined) && (
+                {activeCandidates.some(c => c.ats_score === null || c.ats_score === undefined) && (
                   <button onClick={handleScanAll} disabled={scanAllRunning} className="btn-secondary py-1 px-3 text-xs flex items-center gap-1.5">
                     <Zap size={12} />
                     {scanAllRunning ? 'Scanning...' : 'Scan All'}
                   </button>
                 )}
-                {candidates.some(c => c.ats_score !== null && c.ats_score !== undefined) && (
+                {activeCandidates.some(c => c.ats_score !== null && c.ats_score !== undefined) && (
                   <button onClick={handleRescanAll} disabled={scanAllRunning} className="btn-secondary py-1 px-3 text-xs flex items-center gap-1.5">
                     <Sparkles size={12} />
                     {scanAllRunning ? 'Rescanning...' : 'Rescan All'}
@@ -492,7 +520,7 @@ const JobDetail = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4">
-            {candidates.length === 0 ? (
+            {activeCandidates.length === 0 ? (
                <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-60">
                  <FileText size={48} className="mb-4 text-on-surface-variant" />
                  <p>No candidates yet.</p>
@@ -656,6 +684,77 @@ const JobDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* ═══ Duplicate CVs — Separate Section ═══ */}
+      {duplicateCandidates.length > 0 && (
+        <div className="bg-surface-container-low rounded-2xl border border-status-warning/20 overflow-hidden">
+          <div className="p-4 border-b border-status-warning/15 bg-status-warning/5">
+            <h3 className="font-semibold text-sm flex items-center gap-2 text-status-warning">
+              <Copy size={16} />
+              Duplicate CVs <span className="bg-status-warning/10 text-status-warning text-xs px-2 py-0.5 rounded-full ml-1">{duplicateCandidates.length}</span>
+            </h3>
+            <p className="text-[10px] text-on-surface-variant mt-1 leading-relaxed">
+              These candidates share an email with someone in the Talent Pool. Run ATS scan to compare, then swap if the new CV is better.
+            </p>
+          </div>
+          <div className="p-4 space-y-2">
+            {sortedDuplicates.map(cand => (
+              <div key={cand.id} className="flex items-center justify-between p-3 bg-surface-container hover:bg-surface-container-high transition rounded-xl border border-[rgba(73,69,79,0.1)]">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-status-warning/15 text-status-warning flex items-center justify-center font-bold text-xs">
+                    {cand.first_name[0]}{cand.last_name[0]}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-on-surface text-sm">{cand.first_name} {cand.last_name}</p>
+                    <p className="text-[10px] text-on-surface-variant">{cand.email}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {cand.ats_score !== null && cand.ats_score !== undefined ? (
+                    <div className="flex items-center gap-2">
+                      <ScoreRing score={cand.ats_score} size={36} strokeWidth={3} />
+                      <button
+                        onClick={() => handleAnalyze(cand.id)}
+                        disabled={analyzingIds.has(cand.id)}
+                        className="btn-secondary py-1 px-2 text-[10px] flex items-center gap-1"
+                      >
+                        {analyzingIds.has(cand.id) ? (
+                          <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <Sparkles size={10} />
+                        )}
+                        Rescan
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleAnalyze(cand.id)}
+                      disabled={analyzingIds.has(cand.id)}
+                      className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1.5"
+                    >
+                      {analyzingIds.has(cand.id) ? (
+                        <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Sparkles size={12} className="text-primary" />
+                      )}
+                      {analyzingIds.has(cand.id) ? 'Scanning...' : 'Run ATS Scan'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleSwap(cand.id)}
+                    className="btn-secondary py-1 px-3 text-[10px] flex items-center gap-1.5 text-status-warning border-status-warning/30 hover:bg-status-warning/15 font-semibold"
+                    title="Move this CV to Talent Pool (current active CV moves here)"
+                  >
+                    <ArrowRightLeft size={12} />
+                    Swap
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
