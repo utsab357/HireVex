@@ -477,8 +477,11 @@ const JobDetail = () => {
 
       <div className="grid grid-cols-3 gap-6 flex-1 min-h-0">
         
-        {/* Candidates Panel */}
-        <div className="col-span-2 flex flex-col bg-surface-container-low rounded-2xl border border-[rgba(73,69,79,0.15)] overflow-hidden">
+        {/* Left Column (Candidates & Duplicates) */}
+        <div className="col-span-2 flex flex-col gap-6 min-h-0">
+          
+          {/* Candidates Panel */}
+          <div className="flex flex-col bg-surface-container-low rounded-2xl border border-[rgba(73,69,79,0.15)] overflow-hidden flex-1 min-h-0">
           <div className="p-4 border-b border-[rgba(73,69,79,0.15)] bg-surface-container">
             <div className="flex justify-between items-center mb-2">
               <h2 className="font-semibold text-lg flex items-center gap-2">
@@ -607,8 +610,81 @@ const JobDetail = () => {
           </div>
         </div>
 
+
+          {/* ═══ Duplicate CVs — Separate Section ═══ */}
+          {duplicateCandidates.length > 0 && (
+            <div className="flex flex-col bg-surface-container-low rounded-2xl border border-status-warning/20 overflow-hidden flex-shrink-0 max-h-[300px]">
+              <div className="p-4 border-b border-status-warning/15 bg-status-warning/5 flex-shrink-0">
+                <h3 className="font-semibold text-sm flex items-center gap-2 text-status-warning">
+                  <Copy size={16} />
+                  Duplicate CVs <span className="bg-status-warning/10 text-status-warning text-xs px-2 py-0.5 rounded-full ml-1">{duplicateCandidates.length}</span>
+                </h3>
+                <p className="text-[10px] text-on-surface-variant mt-1 leading-relaxed">
+                  These candidates share an email with someone in the Talent Pool. Run ATS scan to compare, then swap if the new CV is better.
+                </p>
+              </div>
+              <div className="p-4 space-y-2 overflow-y-auto">
+                {sortedDuplicates.map(cand => (
+                  <div key={cand.id} className="flex items-center justify-between p-3 bg-surface-container hover:bg-surface-container-high transition rounded-xl border border-[rgba(73,69,79,0.1)]">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-status-warning/15 text-status-warning flex items-center justify-center font-bold text-xs">
+                        {cand.first_name[0]}{cand.last_name[0]}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-on-surface text-sm">{cand.first_name} {cand.last_name}</p>
+                        <p className="text-[10px] text-on-surface-variant">{cand.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {cand.ats_score !== null && cand.ats_score !== undefined ? (
+                        <div className="flex items-center gap-2">
+                          <ScoreRing score={cand.ats_score} size={36} strokeWidth={3} />
+                          <button
+                            onClick={() => handleAnalyze(cand.id)}
+                            disabled={analyzingIds.has(cand.id)}
+                            className="btn-secondary py-1 px-2 text-[10px] flex items-center gap-1"
+                          >
+                            {analyzingIds.has(cand.id) ? (
+                              <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                              <Sparkles size={10} />
+                            )}
+                            Rescan
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleAnalyze(cand.id)}
+                          disabled={analyzingIds.has(cand.id)}
+                          className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1.5"
+                        >
+                          {analyzingIds.has(cand.id) ? (
+                            <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Sparkles size={12} className="text-primary" />
+                          )}
+                          {analyzingIds.has(cand.id) ? 'Scanning...' : 'Run ATS Scan'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleSwap(cand.id)}
+                        className="btn-secondary py-1 px-3 text-[10px] flex items-center gap-1.5 text-status-warning border-status-warning/30 hover:bg-status-warning/15 font-semibold"
+                        title="Move this CV to Talent Pool (current active CV moves here)"
+                      >
+                        <ArrowRightLeft size={12} />
+                        Swap
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+        </div>
+
         {/* Upload & Details Panel */}
-        <div className="col-span-1 space-y-6 flex flex-col">
+        <div className="col-span-1 space-y-6 flex flex-col overflow-y-auto pr-2 pb-2">
           {/* Upload Zone */}
           <div 
             className={`card flex-shrink-0 border-2 border-dashed transition-all p-6 text-center
@@ -684,77 +760,6 @@ const JobDetail = () => {
           </div>
         </div>
       </div>
-
-      {/* ═══ Duplicate CVs — Separate Section ═══ */}
-      {duplicateCandidates.length > 0 && (
-        <div className="bg-surface-container-low rounded-2xl border border-status-warning/20 overflow-hidden">
-          <div className="p-4 border-b border-status-warning/15 bg-status-warning/5">
-            <h3 className="font-semibold text-sm flex items-center gap-2 text-status-warning">
-              <Copy size={16} />
-              Duplicate CVs <span className="bg-status-warning/10 text-status-warning text-xs px-2 py-0.5 rounded-full ml-1">{duplicateCandidates.length}</span>
-            </h3>
-            <p className="text-[10px] text-on-surface-variant mt-1 leading-relaxed">
-              These candidates share an email with someone in the Talent Pool. Run ATS scan to compare, then swap if the new CV is better.
-            </p>
-          </div>
-          <div className="p-4 space-y-2">
-            {sortedDuplicates.map(cand => (
-              <div key={cand.id} className="flex items-center justify-between p-3 bg-surface-container hover:bg-surface-container-high transition rounded-xl border border-[rgba(73,69,79,0.1)]">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-status-warning/15 text-status-warning flex items-center justify-center font-bold text-xs">
-                    {cand.first_name[0]}{cand.last_name[0]}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-on-surface text-sm">{cand.first_name} {cand.last_name}</p>
-                    <p className="text-[10px] text-on-surface-variant">{cand.email}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {cand.ats_score !== null && cand.ats_score !== undefined ? (
-                    <div className="flex items-center gap-2">
-                      <ScoreRing score={cand.ats_score} size={36} strokeWidth={3} />
-                      <button
-                        onClick={() => handleAnalyze(cand.id)}
-                        disabled={analyzingIds.has(cand.id)}
-                        className="btn-secondary py-1 px-2 text-[10px] flex items-center gap-1"
-                      >
-                        {analyzingIds.has(cand.id) ? (
-                          <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                        ) : (
-                          <Sparkles size={10} />
-                        )}
-                        Rescan
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => handleAnalyze(cand.id)}
-                      disabled={analyzingIds.has(cand.id)}
-                      className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1.5"
-                    >
-                      {analyzingIds.has(cand.id) ? (
-                        <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                      ) : (
-                        <Sparkles size={12} className="text-primary" />
-                      )}
-                      {analyzingIds.has(cand.id) ? 'Scanning...' : 'Run ATS Scan'}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleSwap(cand.id)}
-                    className="btn-secondary py-1 px-3 text-[10px] flex items-center gap-1.5 text-status-warning border-status-warning/30 hover:bg-status-warning/15 font-semibold"
-                    title="Move this CV to Talent Pool (current active CV moves here)"
-                  >
-                    <ArrowRightLeft size={12} />
-                    Swap
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };
