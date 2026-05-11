@@ -10,24 +10,20 @@
     background-color: theme('colors.surface.DEFAULT');
   }
 
-  /* Custom dark scrollbar for all scrollable areas */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(189, 194, 255, 0.15) transparent;
-  }
-  *::-webkit-scrollbar {
+  /* Custom Scrollbar Polish */
+  ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
-  *::-webkit-scrollbar-track {
+  ::-webkit-scrollbar-track {
     background: transparent;
   }
-  *::-webkit-scrollbar-thumb {
-    background: rgba(189, 194, 255, 0.15);
-    border-radius: 999px;
+  ::-webkit-scrollbar-thumb {
+    background: rgba(189, 194, 255, 0.2);
+    border-radius: 4px;
   }
-  *::-webkit-scrollbar-thumb:hover {
-    background: rgba(189, 194, 255, 0.3);
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(189, 194, 255, 0.4);
   }
 }
 

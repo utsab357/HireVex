@@ -1,13 +1,15 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Briefcase, LayoutDashboard, GitMerge, Settings, LifeBuoy, Sparkles, X, BarChart3, GitCompare } from 'lucide-react';
+import { Home, Briefcase, Users, LayoutDashboard, GitMerge, Settings, LifeBuoy, Sparkles, X, BarChart3, GitCompare, FileText } from 'lucide-react';
 
 const Sidebar = ({ isOpen, setIsOpen }) => {
   const navItems = [
     { icon: Home, label: 'HOME', path: '/dashboard' },
     { icon: Briefcase, label: 'JOBS', path: '/jobs' },
+    { icon: Users, label: 'CANDIDATES', path: '/candidates' },
     { icon: GitMerge, label: 'TALENT FLOW', path: '/pipeline' },
     { icon: BarChart3, label: 'ANALYTICS', path: '/analytics' },
+    { icon: FileText, label: 'REPORTS', path: '/reports' },
     { icon: GitCompare, label: 'COMPARE', path: '/compare' },
   ];
 
@@ -61,10 +63,10 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
           </button>
           
           <div className="space-y-1">
-            <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface transition-colors">
+            <NavLink to="/settings" onClick={() => setIsOpen(false)} className={({ isActive }) => `flex items-center gap-3 px-4 py-2 text-sm transition-colors ${isActive ? 'text-primary font-bold' : 'text-on-surface-variant hover:text-on-surface'}`}>
               <Settings size={18} />
               <span className="uppercase tracking-[0.05em] text-[11px] font-semibold">Settings</span>
-            </a>
+            </NavLink>
             <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface transition-colors">
               <LifeBuoy size={18} />
               <span className="uppercase tracking-[0.05em] text-[11px] font-semibold">Support</span>

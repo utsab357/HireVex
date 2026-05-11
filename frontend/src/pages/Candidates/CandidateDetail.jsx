@@ -1,11 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Sparkles, AlertTriangle, CheckCircle, HelpCircle, Mail, X, Phone, FileDown, Briefcase } from 'lucide-react';
+import { ArrowLeft, Sparkles, AlertTriangle, CheckCircle, HelpCircle, Mail, X, Phone, FileDown, Briefcase, MessageSquare, Send, Clock, ChevronRight } from 'lucide-react';
 import api from '../../api/client';
 import ScoreRing from '../../components/shared/ScoreRing';
+import { useToast } from '../../store/ToastContext';
+
+const STAGES = [
+  { id: 'new', label: 'Applied' },
+  { id: 'review', label: 'Review' },
+  { id: 'shortlisted', label: 'Shortlisted' },
+  { id: 'interview', label: 'Interview' },
+  { id: 'offer', label: 'Offered' },
+];
 
 const CandidateDetail = () => {
   const { id } = useParams();
+  const toast = useToast();
   const [candidate, setCandidate] = useState(null);
   const [loading, setLoading] = useState(true);
   
@@ -13,6 +23,13 @@ const CandidateDetail = () => {
   const [isOutreachOpen, setIsOutreachOpen] = useState(false);
   const [outreachLoading, setOutreachLoading] = useState(false);
   const [outreachData, setOutreachData] = useState(null);
+
+  // Notes
+  const [noteContent, setNoteContent] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+
+  const [activeTab, setActiveTab] = useState('overview');
+  const TABS = ['Overview', 'Resume', 'Experience', 'Skills', 'Notes'];
 
   useEffect(() => {
     fetchCandidate();
@@ -39,6 +56,33 @@ const CandidateDetail = () => {
     }
   };
 
+  const handleStatusChange = async (newStatus) => {
+    try {
+      await api.put(`candidates/${id}/status/`, { status: newStatus });
+      setCandidate(prev => ({ ...prev, status: newStatus }));
+      toast.success(`Status changed to ${STAGES.find(s => s.id === newStatus)?.label || newStatus}`);
+      // Refresh to get updated activities
+      fetchCandidate();
+    } catch (err) {
+      toast.error('Failed to update status');
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!noteContent.trim()) return;
+    setAddingNote(true);
+    try {
+      await api.post(`candidates/${id}/notes/`, { content: noteContent.trim() });
+      setNoteContent('');
+      toast.success('Note added');
+      fetchCandidate();
+    } catch (err) {
+      toast.error('Failed to add note');
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
   const handleGenerateOutreach = async (type) => {
     setOutreachLoading(true);
     try {
@@ -49,6 +93,7 @@ const CandidateDetail = () => {
         setOutreachData(res.data);
     } catch (err) {
         console.error("Failed to generate outreach", err);
+        toast.error('Failed to generate outreach email');
     } finally {
         setOutreachLoading(false);
     }
@@ -63,9 +108,10 @@ const CandidateDetail = () => {
   if (!candidate) return <div className="p-8">Candidate not found</div>;
 
   const ev = candidate.evaluation;
+  const currentStageIdx = STAGES.findIndex(s => s.id === candidate.status);
 
   return (
-    <div className="space-y-6 animate-fade-in relative h-full flex flex-col overflow-hidden">
+    <div className="space-y-6 animate-fade-in relative">
       {/* Background decoration */}
       <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-gradient-primary rounded-full blur-[120px] opacity-10 pointer-events-none"></div>
 
@@ -99,6 +145,15 @@ const CandidateDetail = () => {
                 </div>
               </div>
               <div className="flex gap-3">
+                {/* Quick Actions */}
+                <select 
+                  value={candidate.status} 
+                  onChange={e => handleStatusChange(e.target.value)}
+                  className="input-field py-1.5 text-sm h-9 bg-surface-container w-36"
+                >
+                  {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  <option value="rejected">Rejected</option>
+                </select>
                 <button 
                   onClick={() => {
                     if (candidate.resume?.file) {
@@ -107,7 +162,7 @@ const CandidateDetail = () => {
                         : `http://localhost:8000${candidate.resume.file}`;
                       window.open(fileUrl, '_blank');
                     } else {
-                      alert('No resume file available for this candidate.');
+                      toast.warning('No resume file available for this candidate.');
                     }
                   }}
                   className="btn-secondary flex items-center gap-2"
@@ -124,15 +179,72 @@ const CandidateDetail = () => {
         </div>
       </header>
 
-      {!ev ? (
-        <div className="flex-1 flex flex-col items-center justify-center card glass-card">
+      {/* Stage Timeline */}
+      <div className="flex items-center gap-1 bg-surface-container-low rounded-xl p-3 border border-[rgba(73,69,79,0.15)] relative z-10">
+        {STAGES.map((stage, i) => {
+          const isActive = stage.id === candidate.status;
+          const isPast = i < currentStageIdx;
+          const isRejected = candidate.status === 'rejected';
+          return (
+            <React.Fragment key={stage.id}>
+              <button
+                onClick={() => handleStatusChange(stage.id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  isActive ? 'bg-primary/20 text-primary border border-primary/30' :
+                  isPast ? 'bg-status-success/10 text-status-success' :
+                  'text-on-surface-variant hover:bg-surface-container-high'
+                }`}
+              >
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                  isActive ? 'bg-primary text-on-primary' :
+                  isPast ? 'bg-status-success text-on-primary' :
+                  'bg-surface-container-highest text-on-surface-variant'
+                }`}>
+                  {isPast ? '✓' : i + 1}
+                </div>
+                {stage.label}
+              </button>
+              {i < STAGES.length - 1 && (
+                <ChevronRight size={14} className="text-on-surface-variant/30 flex-shrink-0" />
+              )}
+            </React.Fragment>
+          );
+        })}
+        {candidate.status === 'rejected' && (
+          <div className="ml-auto px-3 py-1.5 bg-status-error/15 text-status-error text-xs font-bold rounded-lg uppercase tracking-wider">
+            Rejected
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-6 border-b border-[rgba(73,69,79,0.15)] mt-2">
+        {TABS.map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab.toLowerCase())}
+            className={`pb-3 font-semibold transition-colors text-sm ${
+              activeTab === tab.toLowerCase()
+                ? 'text-primary border-b-2 border-primary'
+                : 'text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            {tab}
+            {tab === 'Notes' && candidate.notes?.length > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 bg-primary/20 text-primary text-[10px] rounded-full">{candidate.notes.length}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {!ev && activeTab === 'overview' ? (
+        <div className="flex-1 flex flex-col items-center justify-center card glass-card py-16">
           <Sparkles size={48} className="text-primary mb-4 opacity-50" />
           <h2 className="text-xl font-bold mb-2">No AI Analysis Yet</h2>
           <p className="text-on-surface-variant text-sm mb-6">Run the AI engine from the Job Board to see explainable insights.</p>
           <Link to={`/jobs/${candidate.job}`} className="btn-primary">Return to Talent Pool</Link>
         </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-6 flex-1 min-h-0 relative z-10">
+      ) : activeTab === 'overview' ? (
+        <div className="grid grid-cols-3 gap-6 relative z-10">
            {/* Left Column: Overall Score & Explanation */}
            <div className="col-span-1 space-y-6 flex flex-col">
              <div className="card glass-card-elevated flex flex-col items-center justify-center py-10 text-center relative overflow-hidden">
@@ -170,8 +282,8 @@ const CandidateDetail = () => {
              </div>
            </div>
 
-           {/* Right Column: Strengths, Weaknesses, Questions */}
-           <div className="col-span-2 flex flex-col gap-6 overflow-y-auto pr-2">
+           {/* Right Column: Strengths, Weaknesses */}
+           <div className="col-span-2 flex flex-col gap-6">
               
               {/* Strength Box */}
               <div className="card bg-surface-container border border-status-success/20">
@@ -203,12 +315,111 @@ const CandidateDetail = () => {
                 </ul>
               </div>
 
-
-
+              {/* Activity Timeline (compact) */}
+              {candidate.activities?.length > 0 && (
+                <div className="card bg-surface-container border border-[rgba(73,69,79,0.15)]">
+                  <h3 className="font-semibold flex items-center gap-2 mb-4">
+                    <Clock size={18} className="text-primary" /> Recent Activity
+                  </h3>
+                  <div className="space-y-3">
+                    {candidate.activities.slice(0, 5).map((act, i) => (
+                      <div key={act.id || i} className="flex items-center gap-3 text-sm">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          act.activity_type === 'status_change' ? 'bg-primary' :
+                          act.activity_type === 'note_added' ? 'bg-tertiary' :
+                          'bg-on-surface-variant'
+                        }`}></div>
+                        <span className="text-on-surface-variant flex-1">{act.description}</span>
+                        <span className="text-[10px] text-on-surface-variant/60">{new Date(act.created_at).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
            </div>
         </div>
-      )}
+      ) : activeTab === 'resume' ? (
+        <div className="bg-surface-container rounded-xl flex items-center justify-center p-8 text-on-surface-variant border border-[rgba(73,69,79,0.15)] relative z-10" style={{minHeight: '500px'}}>
+           {candidate.resume?.file ? (
+              <iframe 
+                src={candidate.resume.file.startsWith('http') ? candidate.resume.file : `http://localhost:8000${candidate.resume.file}`}
+                className="w-full h-full rounded-lg bg-white"
+                style={{minHeight: '500px'}}
+                title="Resume Preview"
+              ></iframe>
+           ) : (
+              <span>No resume available to preview.</span>
+           )}
+        </div>
+      ) : activeTab === 'skills' ? (
+        <div className="bg-surface-container-low p-6 rounded-xl border border-[rgba(73,69,79,0.15)] relative z-10">
+           <h3 className="text-lg font-bold mb-4">Extracted Skills</h3>
+           <div className="flex flex-wrap gap-2">
+             {ev?.parsed_data?.skills?.length ? ev.parsed_data.skills.map((skill, i) => (
+               <span key={i} className="px-3 py-1.5 bg-surface-container-highest rounded-lg text-sm text-on-surface">{skill}</span>
+             )) : <span className="text-on-surface-variant">No skills extracted.</span>}
+           </div>
+        </div>
+      ) : activeTab === 'experience' ? (
+        <div className="bg-surface-container-low p-6 rounded-xl border border-[rgba(73,69,79,0.15)] relative z-10">
+           <h3 className="text-lg font-bold mb-4">Experience Timeline</h3>
+           {ev?.parsed_data?.experience?.length ? (
+             <div className="space-y-4">
+               {ev.parsed_data.experience.map((exp, i) => (
+                 <div key={i} className="card bg-surface-container border-l-4 border-l-primary">
+                    <h4 className="font-bold text-on-surface">{exp.title}</h4>
+                    <p className="text-sm text-primary mb-2">{exp.company}</p>
+                    <p className="text-sm text-on-surface-variant leading-relaxed">{exp.description}</p>
+                 </div>
+               ))}
+             </div>
+           ) : (
+             <p className="text-on-surface-variant">No experience data available.</p>
+           )}
+        </div>
+      ) : activeTab === 'notes' ? (
+        <div className="bg-surface-container-low p-6 rounded-xl border border-[rgba(73,69,79,0.15)] relative z-10">
+           <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+             <MessageSquare size={20} className="text-primary" /> Notes
+           </h3>
+           
+           {/* Add Note Form */}
+           <div className="flex gap-3 mb-6">
+             <textarea
+               value={noteContent}
+               onChange={e => setNoteContent(e.target.value)}
+               placeholder="Add a note about this candidate..."
+               className="input-field flex-1 resize-none h-20"
+               onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleAddNote(); }}
+             />
+             <button 
+               onClick={handleAddNote} 
+               disabled={!noteContent.trim() || addingNote}
+               className="btn-primary self-end flex items-center gap-2 h-10"
+             >
+               <Send size={14} /> {addingNote ? 'Adding...' : 'Add'}
+             </button>
+           </div>
+
+           {/* Notes List */}
+           {candidate.notes?.length > 0 ? (
+             <div className="space-y-4">
+               {candidate.notes.map(note => (
+                 <div key={note.id} className="card bg-surface-container border-l-4 border-l-tertiary">
+                   <p className="text-sm text-on-surface leading-relaxed mb-2">{note.content}</p>
+                   <div className="flex items-center justify-between text-[10px] text-on-surface-variant">
+                     <span className="font-semibold">{note.author_name}</span>
+                     <span>{new Date(note.created_at).toLocaleString()}</span>
+                   </div>
+                 </div>
+               ))}
+             </div>
+           ) : (
+             <p className="text-on-surface-variant text-sm">No notes yet. Add your first note above.</p>
+           )}
+        </div>
+      ) : null}
 
       {/* Outreach Modal */}
       {isOutreachOpen && (

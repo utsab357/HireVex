@@ -75,3 +75,46 @@ class CandidateTag(models.Model):
     def __str__(self):
         return f"{self.candidate} — {self.tag.name}"
 
+
+class CandidateNote(models.Model):
+    """Notes added by HR on a candidate for internal tracking."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='notes')
+    user = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='candidate_notes')
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Note on {self.candidate} by {self.user.email}"
+
+
+class CandidateActivity(models.Model):
+    """Tracks candidate journey through the pipeline stages."""
+    ACTIVITY_TYPES = [
+        ('status_change', 'Status Change'),
+        ('note_added', 'Note Added'),
+        ('resume_uploaded', 'Resume Uploaded'),
+        ('evaluation_completed', 'Evaluation Completed'),
+        ('outreach_sent', 'Outreach Sent'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='activities')
+    activity_type = models.CharField(max_length=30, choices=ACTIVITY_TYPES)
+    description = models.CharField(max_length=500)
+    old_value = models.CharField(max_length=50, blank=True, default='')
+    new_value = models.CharField(max_length=50, blank=True, default='')
+    created_by = models.ForeignKey(
+        'accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='candidate_activities'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.activity_type}: {self.description}"
+

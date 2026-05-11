@@ -3,15 +3,23 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
-from .models import Candidate, Resume, Tag, CandidateTag
-from .serializers import CandidateSerializer, ResumeSerializer
+from .models import Candidate, Resume, Tag, CandidateTag, CandidateNote, CandidateActivity
+from .serializers import CandidateSerializer, ResumeSerializer, CandidateNoteSerializer, CandidateActivitySerializer
 from jobs.models import Job
 from .extractors import extract_text
 import re
 
+from rest_framework.pagination import PageNumberPagination
+
+class CandidatePagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 class CandidateViewSet(viewsets.ModelViewSet):
     serializer_class = CandidateSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = CandidatePagination
     
     def get_queryset(self):
         # Base queryset — user's candidates
@@ -27,6 +35,7 @@ class CandidateViewSet(viewsets.ModelViewSet):
         confidence = self.request.query_params.get('confidence')
         has_review = self.request.query_params.get('has_review')
         tag = self.request.query_params.get('tag')
+        min_exp = self.request.query_params.get('min_experience')
 
         if min_score:
             queryset = queryset.filter(ats_score__gte=int(min_score))
@@ -40,12 +49,16 @@ class CandidateViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(ai_evaluation__needs_review=(has_review.lower() == 'true'))
         if tag:
             queryset = queryset.filter(candidate_tags__tag__name__iexact=tag)
+        
+        # We need to filter by JSONField `parsed_data->experience_years` if min_exp is provided
+        if min_exp:
+            # Note: SQLite json1 extension or Postgres is required for json__ filtering.
+            queryset = queryset.filter(resume__parsed_data__experience_years__gte=float(min_exp))
 
         # Order by score descending by default, then by created_at
         queryset = queryset.order_by('-ats_score', '-created_at')
 
         # Task 8.5: Top N / Top Percentage — ONLY apply on list views
-        # Slicing a queryset makes it a list → breaks detail views (get_object, update, etc.)
         if self.action == 'list':
             top_n = self.request.query_params.get('top')
             top_pct = self.request.query_params.get('top_pct')
@@ -59,6 +72,29 @@ class CandidateViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    @action(detail=False, methods=['post'], url_path='bulk-status')
+    def bulk_status(self, request):
+        candidate_ids = request.data.get('candidate_ids', [])
+        new_status = request.data.get('status')
+
+        valid_statuses = dict(Candidate.STATUS_CHOICES).keys()
+        if new_status not in valid_statuses:
+            return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if not candidate_ids:
+            return Response({'error': 'No candidate_ids provided'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        candidates = Candidate.objects.filter(id__in=candidate_ids, job__user=request.user)
+        count = candidates.update(status=new_status)
+
+        # Log feedback for scoring insights for bulk updates
+        if new_status in ('shortlisted', 'rejected'):
+            for cand in candidates:
+                if cand.ats_score is not None:
+                    self._log_scoring_feedback(cand, new_status)
+
+        return Response({'message': f'Updated {count} candidates to {new_status}', 'count': count})
+
     @action(detail=True, methods=['put'], url_path='status')
     def update_status(self, request, pk=None):
         candidate = self.get_object()
@@ -67,15 +103,71 @@ class CandidateViewSet(viewsets.ModelViewSet):
         valid_statuses = dict(Candidate.STATUS_CHOICES).keys()
         if new_status not in valid_statuses:
             return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
-            
+
+        old_status = candidate.status
         candidate.status = new_status
         candidate.save()
+
+        # Log activity for timeline tracking
+        CandidateActivity.objects.create(
+            candidate=candidate,
+            activity_type='status_change',
+            description=f'Status changed from {old_status} to {new_status}',
+            old_value=old_status,
+            new_value=new_status,
+            created_by=request.user,
+        )
 
         # Phase 9: Log feedback for scoring insights (DISPLAY ONLY — does NOT change scoring)
         if new_status in ('shortlisted', 'rejected') and candidate.ats_score is not None:
             self._log_scoring_feedback(candidate, new_status)
 
         return Response({'status': new_status})
+
+    # ═══════════════════════════════════════════════════════════
+    # Notes API
+    # ═══════════════════════════════════════════════════════════
+
+    @action(detail=True, methods=['get', 'post'], url_path='notes')
+    def notes(self, request, pk=None):
+        """GET/POST /api/candidates/<id>/notes/ — List or add notes."""
+        candidate = self.get_object()
+
+        if request.method == 'GET':
+            notes = candidate.notes.all()
+            return Response(CandidateNoteSerializer(notes, many=True).data)
+
+        # POST — create a new note
+        content = request.data.get('content', '').strip()
+        if not content:
+            return Response({'error': 'Note content is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        note = CandidateNote.objects.create(
+            candidate=candidate,
+            user=request.user,
+            content=content,
+        )
+
+        # Log activity
+        CandidateActivity.objects.create(
+            candidate=candidate,
+            activity_type='note_added',
+            description=f'Note added by {request.user.full_name or request.user.email}',
+            created_by=request.user,
+        )
+
+        return Response(CandidateNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+    # ═══════════════════════════════════════════════════════════
+    # Activity Timeline API
+    # ═══════════════════════════════════════════════════════════
+
+    @action(detail=True, methods=['get'], url_path='activities')
+    def activity_list(self, request, pk=None):
+        """GET /api/candidates/<id>/activities/ — Get candidate activity timeline."""
+        candidate = self.get_object()
+        activities = candidate.activities.all()[:50]  # Last 50 activities
+        return Response(CandidateActivitySerializer(activities, many=True).data)
 
     @action(detail=True, methods=['post'], url_path='swap')
     def swap_pool(self, request, pk=None):

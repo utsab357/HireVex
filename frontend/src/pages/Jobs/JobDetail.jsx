@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Building2, MapPin, ArrowLeft, Upload, FileText, UserPlus, Sparkles, AlertTriangle, ArrowDownAZ, ArrowDown01, Clock, Zap, Pencil, Download, BarChart3, GitCompare, X, ArrowRightLeft, Copy } from 'lucide-react';
+import { Building2, MapPin, ArrowLeft, Upload, FileText, UserPlus, Sparkles, AlertTriangle, ArrowDownAZ, ArrowDown01, Clock, Zap, Pencil, Download, BarChart3, GitCompare, X, ArrowRightLeft, Copy, Users, Target, CheckCircle2, Award } from 'lucide-react';
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import api from '../../api/client';
 import ScoreRing from '../../components/shared/ScoreRing';
+import { useToast } from '../../store/ToastContext';
 
 const JobDetail = () => {
   const { id } = useParams();
+  const toast = useToast();
   const [job, setJob] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +49,8 @@ const JobDetail = () => {
       ]);
       // Merge evaluation data (needs_review, confidence) into candidates
       const evals = evalRes.data || [];
-      const enriched = candRes.data.map(cand => {
+      const candidatesData = candRes.data.results || candRes.data;
+      const enriched = candidatesData.map(cand => {
         const ev = evals.find(e => e.candidate === cand.id);
         return {
           ...cand,
@@ -101,7 +105,7 @@ const JobDetail = () => {
     });
 
     if (validFiles.length === 0) {
-      alert('Please upload PDF or DOCX files.');
+      toast.warning('Please upload PDF or DOCX files.');
       return;
     }
 
@@ -135,7 +139,9 @@ const JobDetail = () => {
 
     // Only show alert for actual errors, duplicates silently go to Duplicate CVs section
     if (errors.length > 0) {
-      alert(`Upload failed:\n${errors.join('\n')}`);
+      toast.error(`Upload failed: ${errors.join(', ')}`);
+    } else if (newCount.added > 0) {
+      toast.success(`${newCount.added} resume(s) uploaded successfully${newCount.duplicates > 0 ? `, ${newCount.duplicates} duplicate(s) found` : ''}`);
     }
     setUploading(false);
     setBulkProgress(null);
@@ -181,7 +187,7 @@ const JobDetail = () => {
       await fetchCandidates();
     } catch (err) {
       console.error('Swap failed', err);
-      alert('Swap failed: ' + (err.response?.data?.error || 'Unknown error'));
+      toast.error('Swap failed: ' + (err.response?.data?.error || 'Unknown error'));
     }
   };
 
@@ -215,7 +221,7 @@ const JobDetail = () => {
   // === EXPORT CSV ===
   const handleExportCSV = () => {
     const scored = candidates.filter(c => c.ats_score !== null && c.ats_score !== undefined);
-    if (scored.length === 0) { alert('No scored candidates to export.'); return; }
+    if (scored.length === 0) { toast.warning('No scored candidates to export.'); return; }
     const headers = ['Name', 'Email', 'Phone', 'Score', 'Status', 'Date'];
     const rows = scored.map(c => [
       `${c.first_name} ${c.last_name}`,
@@ -466,7 +472,7 @@ const JobDetail = () => {
                     const res = await api.put(`jobs/${id}/`, payload);
                     setJob(res.data);
                     setEditingJob(false);
-                  } catch (e) { console.error('Update failed', e); alert('Failed to update job.'); }
+                  } catch (e) { console.error('Update failed', e); toast.error('Failed to update job.'); }
                 }}
                 className="btn-primary"
               >Save Changes</button>
@@ -475,10 +481,59 @@ const JobDetail = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-6 flex-1 min-h-0">
+      {/* Top Stats Row */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="card glass-card p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+            <Users size={20} />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-on-surface">{analytics.total}</div>
+            <div className="text-[10px] uppercase text-on-surface-variant font-semibold tracking-wider">Total Candidates</div>
+          </div>
+        </div>
+        <div className="card glass-card p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-tertiary/10 text-tertiary flex items-center justify-center flex-shrink-0">
+            <Target size={20} />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-on-surface">{analytics.avg}</div>
+            <div className="text-[10px] uppercase text-on-surface-variant font-semibold tracking-wider">Average Score</div>
+          </div>
+        </div>
+        <div className="card glass-card p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-status-warning/10 text-status-warning flex items-center justify-center flex-shrink-0">
+            <AlertTriangle size={20} />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-on-surface">{analytics.statuses.review || 0}</div>
+            <div className="text-[10px] uppercase text-on-surface-variant font-semibold tracking-wider">In Review</div>
+          </div>
+        </div>
+        <div className="card glass-card p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-status-success/10 text-status-success flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 size={20} />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-on-surface">{analytics.statuses.shortlisted || 0}</div>
+            <div className="text-[10px] uppercase text-on-surface-variant font-semibold tracking-wider">Shortlisted</div>
+          </div>
+        </div>
+        <div className="card glass-card p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-[#8b5cf6]/10 text-[#8b5cf6] flex items-center justify-center flex-shrink-0">
+            <Award size={20} />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-on-surface">{analytics.statuses.offer || 0}</div>
+            <div className="text-[10px] uppercase text-on-surface-variant font-semibold tracking-wider">Offered</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
         
         {/* Left Column (Candidates & Duplicates) */}
-        <div className="col-span-2 flex flex-col gap-6 min-h-0">
+        <div className="col-span-1 lg:col-span-2 flex flex-col gap-6 min-h-0">
           
           {/* Candidates Panel */}
           <div className="flex flex-col bg-surface-container-low rounded-2xl border border-[rgba(73,69,79,0.15)] overflow-hidden flex-1 min-h-0">
@@ -713,29 +768,77 @@ const JobDetail = () => {
              </label>
           </div>
 
-          {/* Pipeline Insights Card */}
-          <div className="card glass-card border border-primary/20 bg-gradient-to-b from-primary/5 to-transparent flex-shrink-0">
-            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-              <BarChart3 size={16} className="text-primary" /> Pipeline Insights
-            </h3>
-            {insight && (
-              <p className="text-xs text-on-surface-variant mb-3 leading-relaxed">💡 {insight}</p>
-            )}
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              <div className="text-center p-2 bg-surface-container rounded-lg">
-                <div className="text-lg font-bold text-primary">{analytics.avg}</div>
-                <div className="text-[9px] uppercase text-on-surface-variant tracking-wider">Avg Score</div>
-              </div>
-              <div className="text-center p-2 bg-surface-container rounded-lg">
-                <div className="text-lg font-bold text-status-success">{analytics.statuses.shortlisted || 0}</div>
-                <div className="text-[9px] uppercase text-on-surface-variant tracking-wider">Shortlisted</div>
-              </div>
-              <div className="text-center p-2 bg-surface-container rounded-lg">
-                <div className="text-lg font-bold text-status-error">{analytics.statuses.rejected || 0}</div>
-                <div className="text-[9px] uppercase text-on-surface-variant tracking-wider">Rejected</div>
+          {/* Visual Analytics */}
+          <div className="card bg-surface-container-low border border-[rgba(73,69,79,0.15)] flex-shrink-0 space-y-6">
+            
+            {/* Stage Distribution */}
+            <div>
+              <h3 className="font-semibold text-sm mb-4 flex items-center gap-2">
+                <BarChart3 size={16} className="text-primary" /> Stage Distribution
+              </h3>
+              <div className="h-[140px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={[
+                    { name: 'Applied', count: analytics.statuses.new || 0 },
+                    { name: 'Review', count: analytics.statuses.review || 0 },
+                    { name: 'Shortlist', count: analytics.statuses.shortlisted || 0 },
+                    { name: 'Interview', count: analytics.statuses.interview || 0 },
+                    { name: 'Offer', count: analytics.statuses.offer || 0 }
+                  ]}>
+                    <XAxis dataKey="name" tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                    <RechartsTooltip cursor={{fill: 'rgba(189, 194, 255, 0.05)'}} contentStyle={{backgroundColor: '#1e1e2d', border: '1px solid rgba(189,194,255,0.1)', borderRadius: '8px', fontSize: '12px'}} />
+                    <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
-            <Link to="/analytics" className="text-xs text-primary hover:underline font-medium flex items-center gap-1">View full analytics →</Link>
+
+            <div className="h-px bg-[rgba(73,69,79,0.15)] w-full"></div>
+
+            {/* Talent Pool Donut */}
+            <div>
+              <h3 className="font-semibold text-sm mb-4 flex items-center gap-2">
+                <Target size={16} className="text-primary" /> Talent Pool
+              </h3>
+              <div className="h-[140px] w-full relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: 'In Review', value: analytics.statuses.review || 0, color: '#facc15' },
+                        { name: 'Shortlisted', value: analytics.statuses.shortlisted || 0, color: '#a3e635' },
+                        { name: 'Interview', value: analytics.statuses.interview || 0, color: '#6366f1' },
+                        { name: 'Applied', value: analytics.statuses.new || 0, color: '#94a3b8' }
+                      ]}
+                      innerRadius={40}
+                      outerRadius={60}
+                      paddingAngle={5}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      {
+                        [
+                          { name: 'In Review', value: analytics.statuses.review || 0, color: '#facc15' },
+                          { name: 'Shortlisted', value: analytics.statuses.shortlisted || 0, color: '#a3e635' },
+                          { name: 'Interview', value: analytics.statuses.interview || 0, color: '#6366f1' },
+                          { name: 'Applied', value: analytics.statuses.new || 0, color: '#94a3b8' }
+                        ].map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))
+                      }
+                    </Pie>
+                    <RechartsTooltip contentStyle={{backgroundColor: '#1e1e2d', border: '1px solid rgba(189,194,255,0.1)', borderRadius: '8px', fontSize: '12px'}} />
+                  </PieChart>
+                </ResponsiveContainer>
+                {/* Center text for Donut */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-xl font-bold text-on-surface">{activeCandidates.length}</span>
+                  <span className="text-[9px] text-on-surface-variant uppercase tracking-wider">Total</span>
+                </div>
+              </div>
+            </div>
+
+            <Link to="/analytics" className="text-xs text-primary hover:underline font-medium flex items-center justify-center gap-1 mt-2 w-full btn-secondary py-2">Full Analytics →</Link>
           </div>
 
           {/* Job Details */}
