@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { ArrowLeft, Building2, MapPin, Search, Filter, CheckSquare, Square, Download, ChevronLeft, ChevronRight, MoreVertical, ShieldAlert, Award, Star, Mail, Target, BarChart3 } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, Building2, MapPin, Search, Filter, CheckSquare, Square, Download, ChevronLeft, ChevronRight, MoreVertical, ShieldAlert, Award, Star, Mail, Target, BarChart3 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import api from '../../api/client';
 import ScoreRing from '../../components/shared/ScoreRing';
@@ -19,7 +19,7 @@ const STAGES = [
   { id: 'rejected', label: 'Rejected' }
 ];
 
-const Pipeline = () => {
+const TalentFlow = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const jobId = searchParams.get('job');
   const toast = useToast();
@@ -173,7 +173,7 @@ const Pipeline = () => {
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `pipeline_export.csv`; a.click();
+    a.href = url; a.download = `talent_flow_export.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -197,12 +197,12 @@ const Pipeline = () => {
     return (
       <div className="space-y-6 animate-fade-in relative overflow-hidden">
         <header className="relative z-10">
-          <h1 className="text-3xl font-bold tracking-tight text-on-surface">Pipeline</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-on-surface">Talent Flow</h1>
           <p className="text-on-surface-variant mt-1 text-sm">Select a job to manage its candidates.</p>
         </header>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
           {allJobs.map(j => (
-            <Link to={`/pipeline?job=${j.id}`} key={j.id} className="card glass-card hover:border-primary/30 transition-all group">
+            <Link to={`/talent-flow?job=${j.id}`} key={j.id} className="card glass-card hover:border-primary/30 transition-all group">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
                   <Building2 size={20} />
@@ -222,22 +222,24 @@ const Pipeline = () => {
   if (!job) return <div className="p-8">Loading...</div>;
 
   return (
-    <div className="space-y-4 animate-fade-in h-[calc(100vh-100px)] flex flex-col relative z-10">
+    <div className="space-y-4 animate-fade-in relative z-10">
       
       {/* 4.1 Stage Summary Bar */}
-      <div className="flex bg-surface-container-low border border-[rgba(73,69,79,0.15)] rounded-xl overflow-hidden shadow-sm flex-shrink-0">
-        {STAGES.map((stage, idx) => (
-          <div key={stage.id} className={`flex-1 p-3 text-center ${idx !== STAGES.length - 1 ? 'border-r border-[rgba(73,69,79,0.15)]' : ''}`}>
-            <div className="text-lg font-bold text-on-surface">{stageCounts[stage.id] || 0}</div>
-            <div className="text-[10px] uppercase tracking-wider text-on-surface-variant font-semibold">{stage.label}</div>
-          </div>
-        ))}
+      <div className="overflow-x-auto rounded-xl border border-[rgba(73,69,79,0.15)] shadow-sm flex-shrink-0">
+        <div className="flex bg-surface-container-low min-w-[600px]">
+          {STAGES.map((stage, idx) => (
+            <div key={stage.id} className={`flex-1 p-3 text-center cursor-pointer hover:bg-surface-container transition-colors ${idx !== STAGES.length - 1 ? 'border-r border-[rgba(73,69,79,0.15)]' : ''} ${filters.stage === stage.id ? 'bg-primary/10' : ''}`} onClick={() => { setFilters({...filters, stage: filters.stage === stage.id ? '' : stage.id}); setPage(1); }}>
+              <div className="text-lg font-bold text-on-surface">{stageCounts[stage.id] || 0}</div>
+              <div className="text-[10px] uppercase tracking-wider text-on-surface-variant font-semibold">{stage.label}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* 4.2 & 4.3 Advanced Filters & Search */}
       <div className="flex flex-col lg:flex-row gap-3 justify-between items-start lg:items-center bg-surface-container-low p-3 rounded-xl border border-[rgba(73,69,79,0.15)] flex-shrink-0">
-        <div className="flex items-center gap-3 w-full lg:w-auto">
-          <div className="relative flex-1 lg:w-64">
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          <div className="relative flex-1 min-w-[180px]">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
             <input 
               type="text" 
@@ -248,17 +250,17 @@ const Pipeline = () => {
               className="input-field pl-8 py-1.5 text-sm h-9 w-full bg-surface-container"
             />
           </div>
-          <select className="input-field py-1.5 text-sm h-9 bg-surface-container w-32" value={filters.stage} onChange={e => { setFilters({...filters, stage: e.target.value}); setPage(1); }}>
+          <select className="input-field py-1.5 text-sm h-9 bg-surface-container w-28 md:w-32" value={filters.stage} onChange={e => { setFilters({...filters, stage: e.target.value}); setPage(1); }}>
             <option value="">All Stages</option>
             {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
-          <select className="input-field py-1.5 text-sm h-9 bg-surface-container w-32" value={filters.minScore} onChange={e => { setFilters({...filters, minScore: e.target.value}); setPage(1); }}>
+          <select className="input-field py-1.5 text-sm h-9 bg-surface-container w-28 md:w-32 hidden sm:block" value={filters.minScore} onChange={e => { setFilters({...filters, minScore: e.target.value}); setPage(1); }}>
             <option value="">Any Score</option>
             <option value="90">&gt; 90</option>
             <option value="80">&gt; 80</option>
             <option value="70">&gt; 70</option>
           </select>
-          <select className="input-field py-1.5 text-sm h-9 bg-surface-container w-32" value={filters.minExp} onChange={e => { setFilters({...filters, minExp: e.target.value}); setPage(1); }}>
+          <select className="input-field py-1.5 text-sm h-9 bg-surface-container w-28 md:w-32 hidden sm:block" value={filters.minExp} onChange={e => { setFilters({...filters, minExp: e.target.value}); setPage(1); }}>
             <option value="">Any Exp</option>
             <option value="2">2+ Years</option>
             <option value="5">5+ Years</option>
@@ -285,9 +287,9 @@ const Pipeline = () => {
       </div>
 
       {/* 4.6 Table Enhancements */}
-      <div className="card bg-surface-container-low border border-[rgba(73,69,79,0.15)] p-0 flex-1 overflow-hidden flex flex-col">
-        <div className="overflow-y-auto flex-1">
-          <table className="w-full text-left border-collapse whitespace-nowrap">
+      <div className="card bg-surface-container-low border border-[rgba(73,69,79,0.15)] p-0 overflow-hidden">
+        <div className="overflow-x-auto min-h-[500px]">
+          <table className="w-full text-left border-collapse">
             <thead className="bg-surface-container sticky top-0 z-10">
               <tr className="border-b border-[rgba(73,69,79,0.15)] text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
                 <th className="p-4 w-12 text-center">
@@ -295,14 +297,14 @@ const Pipeline = () => {
                     {selectedIds.size > 0 && selectedIds.size === candidates.length ? <CheckSquare size={16} className="text-primary"/> : <Square size={16} />}
                   </button>
                 </th>
-                <th className="p-4 cursor-pointer hover:text-on-surface" onClick={() => handleSort('first_name')}>Candidate</th>
-                <th className="p-4 cursor-pointer hover:text-on-surface" onClick={() => handleSort('status')}>Stage</th>
-                <th className="p-4 text-center cursor-pointer hover:text-on-surface" onClick={() => handleSort('ats_score')}>Score</th>
-                <th className="p-4 text-center cursor-pointer hover:text-on-surface" onClick={() => handleSort('confidence')}>Confidence</th>
-                <th className="p-4">Experience</th>
-                <th className="p-4">Top Skills</th>
-                <th className="p-4 cursor-pointer hover:text-on-surface" onClick={() => handleSort('created_at')}>Applied</th>
-                <th className="p-4 text-right">Actions</th>
+                <th className="p-4 min-w-[180px] md:min-w-[220px] cursor-pointer hover:text-on-surface" onClick={() => handleSort('first_name')}>Candidate</th>
+                <th className="p-4 min-w-[90px] md:min-w-[110px] cursor-pointer hover:text-on-surface" onClick={() => handleSort('status')}>Stage</th>
+                <th className="p-4 min-w-[70px] md:min-w-[90px] text-center cursor-pointer hover:text-on-surface" onClick={() => handleSort('ats_score')}>Score</th>
+                <th className="p-4 min-w-[110px] text-center cursor-pointer hover:text-on-surface hidden md:table-cell" onClick={() => handleSort('confidence')}>Confidence</th>
+                <th className="p-4 min-w-[110px] hidden lg:table-cell">Experience</th>
+                <th className="p-4 min-w-[180px] hidden lg:table-cell">Top Skills</th>
+                <th className="p-4 min-w-[100px] cursor-pointer hover:text-on-surface hidden md:table-cell" onClick={() => handleSort('created_at')}>Applied</th>
+                <th className="p-4 min-w-[80px] text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -345,7 +347,7 @@ const Pipeline = () => {
                         <span className="text-[10px] text-on-surface-variant">Unscored</span>
                       )}
                     </td>
-                    <td className="p-4 text-center">
+                    <td className="p-4 text-center hidden md:table-cell">
                       <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
                         cand.confidence === 'high' ? 'bg-status-success/15 text-status-success' :
                         cand.confidence === 'low' ? 'bg-status-error/15 text-status-error' :
@@ -354,13 +356,13 @@ const Pipeline = () => {
                         {cand.confidence || 'Medium'}
                       </span>
                     </td>
-                    <td className="p-4 text-sm text-on-surface-variant">
+                    <td className="p-4 text-sm text-on-surface-variant hidden lg:table-cell">
                       {cand.parsed_data?.experience_years ? `${cand.parsed_data.experience_years} years` : '-'}
                     </td>
-                    <td className="p-4 text-xs text-on-surface-variant max-w-[200px] truncate">
+                    <td className="p-4 text-xs text-on-surface-variant max-w-[200px] truncate hidden lg:table-cell">
                       {cand.parsed_data?.skills ? cand.parsed_data.skills.slice(0, 3).join(', ') : '-'}
                     </td>
-                    <td className="p-4 text-sm text-on-surface-variant">
+                    <td className="p-4 text-sm text-on-surface-variant hidden md:table-cell">
                       {new Date(cand.created_at).toLocaleDateString()}
                     </td>
                     <td className="p-4 text-right">
@@ -389,10 +391,10 @@ const Pipeline = () => {
       {/* 4.7 Bottom Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-shrink-0 pb-6">
         
-        {/* Pipeline Summary (Donut) */}
+        {/* Talent Flow Summary (Donut) */}
         <div className="card bg-surface-container-low border border-[rgba(73,69,79,0.15)] flex flex-col">
           <h3 className="font-semibold text-sm mb-4 flex items-center gap-2">
-            <Target size={16} className="text-primary" /> Pipeline Summary
+            <Target size={16} className="text-primary" /> Talent Flow Summary
           </h3>
           <div className="flex-1 flex items-center justify-center relative min-h-[120px]">
             <ResponsiveContainer width="100%" height={120}>
@@ -489,4 +491,4 @@ const Pipeline = () => {
   );
 };
 
-export default Pipeline;
+export default TalentFlow;

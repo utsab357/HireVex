@@ -15,7 +15,7 @@ const Jobs = lazy(() => import('./pages/Jobs/Jobs'));
 const JobDetail = lazy(() => import('./pages/Jobs/JobDetail'));
 const CandidateDetail = lazy(() => import('./pages/Candidates/CandidateDetail'));
 const Candidates = lazy(() => import('./pages/Candidates/Candidates'));
-const Pipeline = lazy(() => import('./pages/Pipeline/Pipeline'));
+const TalentFlow = lazy(() => import('./pages/Pipeline/Pipeline'));
 const Analytics = lazy(() => import('./pages/Analytics/Analytics'));
 const Compare = lazy(() => import('./pages/Compare/Compare'));
 const Settings = lazy(() => import('./pages/Settings/Settings'));
@@ -50,7 +50,8 @@ function App() {
               <Route path="/jobs/:id" element={<JobDetail />} />
               <Route path="/candidates/:id" element={<CandidateDetail />} />
               <Route path="/candidates" element={<Candidates />} />
-              <Route path="/pipeline" element={<Pipeline />} />
+              <Route path="/talent-flow" element={<TalentFlow />} />
+              <Route path="/pipeline" element={<Navigate to="/talent-flow" replace />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/compare" element={<Compare />} />
               <Route path="/settings" element={<Settings />} />

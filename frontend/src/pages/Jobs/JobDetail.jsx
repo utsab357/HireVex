@@ -559,7 +559,7 @@ const JobDetail = () => {
                 <button onClick={handleExportCSV} className="btn-secondary py-1 px-3 text-xs flex items-center gap-1.5" title="Export CSV">
                   <Download size={12} /> Export
                 </button>
-                <Link to={`/pipeline?job=${id}`} className="text-xs font-semibold text-primary hover:underline uppercase tracking-wider">Talent Flow</Link>
+                <Link to={`/talent-flow?job=${id}`} className="text-xs font-semibold text-primary hover:underline uppercase tracking-wider">Talent Flow</Link>
               </div>
             </div>
             <div className="flex items-center gap-1">

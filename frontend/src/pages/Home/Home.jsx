@@ -159,7 +159,7 @@ const Home = () => {
             <div className="card bg-surface-container-low border border-[rgba(73,69,79,0.15)] flex flex-col h-[400px]">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-semibold text-lg text-on-surface">Hiring Activity</h2>
-                <Link to="/pipeline" className="text-xs text-primary font-semibold hover:underline">View All</Link>
+                <Link to="/talent-flow" className="text-xs text-primary font-semibold hover:underline">View All</Link>
               </div>
               <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                 {stats.recentActivity.length === 0 ? (
@@ -250,7 +250,7 @@ const Home = () => {
                   <span className="text-sm font-bold text-on-surface">{stats.queue.unscored}</span>
                 </div>
               </div>
-              <Link to="/pipeline" className="mt-4 w-full py-2.5 rounded-lg border border-[rgba(73,69,79,0.3)] text-sm font-semibold text-center hover:bg-surface-container-high transition-colors text-on-surface">
+              <Link to="/talent-flow" className="mt-4 w-full py-2.5 rounded-lg border border-[rgba(73,69,79,0.3)] text-sm font-semibold text-center hover:bg-surface-container-high transition-colors text-on-surface">
                 Review Now
               </Link>
             </div>

@@ -7,7 +7,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     { icon: Home, label: 'HOME', path: '/dashboard' },
     { icon: Briefcase, label: 'JOBS', path: '/jobs' },
     { icon: Users, label: 'CANDIDATES', path: '/candidates' },
-    { icon: GitMerge, label: 'TALENT FLOW', path: '/pipeline' },
+    { icon: GitMerge, label: 'TALENT FLOW', path: '/talent-flow' },
     { icon: BarChart3, label: 'ANALYTICS', path: '/analytics' },
     { icon: FileText, label: 'REPORTS', path: '/reports' },
     { icon: GitCompare, label: 'COMPARE', path: '/compare' },

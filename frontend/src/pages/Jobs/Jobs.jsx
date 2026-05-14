@@ -307,7 +307,7 @@ const Jobs = () => {
                   </div>
                </div>
             </div>
-            <Link to="/pipeline" className="btn-secondary w-full text-center text-xs py-2.5 mt-6">View Talent Pool</Link>
+            <Link to="/talent-flow" className="btn-secondary w-full text-center text-xs py-2.5 mt-6">View Talent Pool</Link>
           </div>
 
           <div className="card bg-surface-container-low border border-[rgba(73,69,79,0.15)] flex flex-col">
@@ -324,7 +324,7 @@ const Jobs = () => {
                 ))}
               </div>
             </div>
-            <Link to="/pipeline" className="btn-secondary w-full text-center text-xs py-2.5 mt-4">View All Duplicates</Link>
+            <Link to="/talent-flow" className="btn-secondary w-full text-center text-xs py-2.5 mt-4">View All Duplicates</Link>
           </div>
 
           <div className="card bg-surface-container-low border border-[rgba(73,69,79,0.15)] flex flex-col">
@@ -343,7 +343,7 @@ const Jobs = () => {
                 </div>
               </div>
             </div>
-            <Link to="/pipeline" className="btn-secondary w-full text-center text-xs py-2.5 mt-4">Review Action Items</Link>
+            <Link to="/talent-flow" className="btn-secondary w-full text-center text-xs py-2.5 mt-4">Review Action Items</Link>
           </div>
 
         </div>

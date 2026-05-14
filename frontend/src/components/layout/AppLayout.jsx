@@ -17,11 +17,11 @@ const AppLayout = () => {
   }
 
   return (
-    <div className="flex h-screen bg-surface overflow-hidden w-full relative">
+    <div className="flex h-screen bg-surface w-full relative">
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
-      <div className="flex flex-col flex-1 overflow-hidden w-full max-w-full">
+      <div className="flex flex-col flex-1 min-w-0 overflow-y-auto bg-surface">
         <Navbar toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8 w-full max-w-[1200px] mx-auto min-h-0">
+        <main className="flex-1 p-4 md:p-8 w-full">
           <Outlet />
         </main>
       </div>

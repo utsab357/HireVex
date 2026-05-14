@@ -12,7 +12,7 @@ const Navbar = ({ toggleSidebar }) => {
   };
 
   return (
-    <header className="h-[72px] px-4 md:px-8 flex items-center justify-between flex-shrink-0 border-b border-[rgba(73,69,79,0.15)] bg-surface relative z-10 w-full overflow-hidden">
+    <header className="h-[72px] px-4 md:px-8 flex items-center justify-between flex-shrink-0 border-b border-[rgba(73,69,79,0.15)] bg-surface sticky top-0 z-10 w-full">
       
       <div className="flex items-center gap-4">
         <button 
